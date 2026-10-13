@@ -47,7 +47,8 @@ def focus_game_window():
         pass
     return False
 
-from flask import Flask, request, jsonify, render_template, send_file, Response, send_from_directory
+import urllib.parse
+from flask import Flask, request, jsonify, render_template, send_file, Response, send_from_directory, redirect
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
@@ -240,7 +241,7 @@ def normalize_weight(weight_val):
         return f"{m.group(1)} kg"
     return s
 
-# ----------------- DEMO / MOCK DATA (quando AC ainda não está configurado) -----------------
+# ----------------- DEMO / MOCK DATA (com fotos reais de alta qualidade) -----------------
 DEMO_CARS = [
     {
         "id": "ks_ferrari_488_gt3",
@@ -250,7 +251,8 @@ DEMO_CARS = [
         "skins": ["00_racing_red", "01_scuderia_yellow", "02_corsa_black", "03_matte_grey"],
         "default_skin": "00_racing_red",
         "badge_url": "/api/img/badge/ks_ferrari_488_gt3",
-        "country": "Italy"
+        "country": "Italy",
+        "image_url": "https://images.unsplash.com/photo-1583121274602-3e2820c69888?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "ks_porsche_911_gt3_rs",
@@ -260,7 +262,8 @@ DEMO_CARS = [
         "skins": ["00_lava_orange", "01_miami_blue", "02_guards_red", "03_racing_yellow"],
         "default_skin": "00_lava_orange",
         "badge_url": "/api/img/badge/ks_porsche_911_gt3_rs",
-        "country": "Germany"
+        "country": "Germany",
+        "image_url": "https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "bmw_m3_e30_drift",
@@ -270,7 +273,8 @@ DEMO_CARS = [
         "skins": ["00_motorsport_classic", "01_matte_black", "02_alpina_blue"],
         "default_skin": "00_motorsport_classic",
         "badge_url": "/api/img/badge/bmw_m3_e30_drift",
-        "country": "Germany"
+        "country": "Germany",
+        "image_url": "https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "toyota_supra_mkiv_tuned",
@@ -280,7 +284,8 @@ DEMO_CARS = [
         "skins": ["00_quicksilver", "01_midnight_purple", "02_castrol_racing"],
         "default_skin": "00_quicksilver",
         "badge_url": "/api/img/badge/toyota_supra_mkiv_tuned",
-        "country": "Japan"
+        "country": "Japan",
+        "image_url": "https://images.unsplash.com/photo-1607603750909-408e193868c7?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "ks_lamborghini_huracan_performante",
@@ -290,7 +295,8 @@ DEMO_CARS = [
         "skins": ["00_arancio_anthaeus", "01_verde_mantis", "02_bianco_monocerus"],
         "default_skin": "00_arancio_anthaeus",
         "badge_url": "/api/img/badge/ks_lamborghini_huracan_performante",
-        "country": "Italy"
+        "country": "Italy",
+        "image_url": "https://images.unsplash.com/photo-1544829099-b9a0c07fad1a?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "ks_mazda_miata",
@@ -300,7 +306,8 @@ DEMO_CARS = [
         "skins": ["00_classic_red", "01_mariner_blue", "02_sunburst_yellow"],
         "default_skin": "00_classic_red",
         "badge_url": "/api/img/badge/ks_mazda_miata",
-        "country": "Japan"
+        "country": "Japan",
+        "image_url": "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1200&q=80"
     }
 ]
 
@@ -310,44 +317,115 @@ DEMO_TRACKS = [
         "name": "Circuit de Spa-Francorchamps",
         "layout": "",
         "specs": {"length": "7.004 km", "pitboxes": "42", "country": "Belgium", "city": "Stavelot"},
-        "preview_url": "/api/img/track/spa"
+        "preview_url": "/api/img/track/spa",
+        "image_url": "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "ks_nordschleife",
         "name": "Nürburgring Nordschleife",
         "layout": "tourist",
         "specs": {"length": "20.832 km", "pitboxes": "36", "country": "Germany", "city": "Nürburg"},
-        "preview_url": "/api/img/track/ks_nordschleife?layout=tourist"
+        "preview_url": "/api/img/track/ks_nordschleife?layout=tourist",
+        "image_url": "https://images.unsplash.com/photo-1596727147705-61a532a659bd?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "ks_nordschleife",
         "name": "Nürburgring Nordschleife",
         "layout": "endurance",
         "specs": {"length": "25.378 km", "pitboxes": "56", "country": "Germany", "city": "Nürburg"},
-        "preview_url": "/api/img/track/ks_nordschleife?layout=endurance"
+        "preview_url": "/api/img/track/ks_nordschleife?layout=endurance",
+        "image_url": "https://images.unsplash.com/photo-1596727147705-61a532a659bd?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "monza",
         "name": "Autodromo Nazionale Monza",
         "layout": "",
         "specs": {"length": "5.793 km", "pitboxes": "30", "country": "Italy", "city": "Monza"},
-        "preview_url": "/api/img/track/monza"
+        "preview_url": "/api/img/track/monza",
+        "image_url": "https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "ks_silverstone",
         "name": "Silverstone Circuit",
         "layout": "gp",
         "specs": {"length": "5.891 km", "pitboxes": "36", "country": "United Kingdom", "city": "Silverstone"},
-        "preview_url": "/api/img/track/ks_silverstone?layout=gp"
+        "preview_url": "/api/img/track/ks_silverstone?layout=gp",
+        "image_url": "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80"
     },
     {
         "id": "drift_playground",
         "name": "Drift Playground",
         "layout": "",
         "specs": {"length": "1.100 km", "pitboxes": "18", "country": "Japan", "city": "Ebisu Style"},
-        "preview_url": "/api/img/track/drift_playground"
+        "preview_url": "/api/img/track/drift_playground",
+        "image_url": "https://images.unsplash.com/photo-1508974239320-0a029497e820?auto=format&fit=crop&w=1200&q=80"
     }
 ]
+
+# Cache em memoria para imagens obtidas da web / Wikipedia
+WEB_IMG_CACHE = {}
+
+def find_preview_image_in_dir(folder_path):
+    """
+    Procura ficheiro de preview de imagem de forma case-insensitive e robusta:
+    preview.jpg, preview.png, preview.jpeg, Preview.jpg, PREVIEW.PNG, etc.
+    """
+    if not folder_path:
+        return None
+    try:
+        p = Path(folder_path)
+        if not p.exists() or not p.is_dir():
+            return None
+        for item in p.iterdir():
+            if item.is_file() and item.stem.lower() == "preview" and item.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
+                return item
+    except Exception:
+        pass
+    return None
+
+def get_car_or_track_web_image(item_id, display_name=None):
+    """
+    Obtem uma foto real de alta qualidade para um carro ou pista:
+    1. Verifica dicionario predefinido dos carros e pistas demo
+    2. Consulta cache local em memoria
+    3. Faz fetch automatico a API da Wikipedia/Wikimedia
+    """
+    if not item_id:
+        return None
+
+    clean_id = item_id.lower().strip()
+    if clean_id in WEB_IMG_CACHE:
+        return WEB_IMG_CACHE[clean_id]
+
+    # 1. Verificar na lista de carros demo
+    for c in DEMO_CARS:
+        if c.get("id", "").lower() == clean_id and c.get("image_url"):
+            WEB_IMG_CACHE[clean_id] = c["image_url"]
+            return c["image_url"]
+
+    # 2. Verificar na lista de pistas demo
+    for t in DEMO_TRACKS:
+        if t.get("id", "").lower() == clean_id and t.get("image_url"):
+            WEB_IMG_CACHE[clean_id] = t["image_url"]
+            return t["image_url"]
+
+    # 3. Fetch automatico via Wikipedia REST API
+    query_name = display_name or clean_id.replace("ks_", "").replace("_", " ").title()
+    try:
+        import requests
+        wiki_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(query_name)}"
+        headers = {"User-Agent": "ACRemote/1.0 (https://github.com/santicoliveira-byte/ac-remote)"}
+        resp = requests.get(wiki_url, headers=headers, timeout=2.5)
+        if resp.status_code == 200:
+            wdata = resp.json()
+            img_src = wdata.get("originalimage", {}).get("source") or wdata.get("thumbnail", {}).get("source")
+            if img_src:
+                WEB_IMG_CACHE[clean_id] = img_src
+                return img_src
+    except Exception:
+        pass
+
+    return None
 
 # ----------------- ROTAS PRINCIPAIS -----------------
 
@@ -513,6 +591,7 @@ def get_cars():
             car_data["skins"] = skins
             car_data["default_skin"] = skins[0]
             car_data["badge_url"] = f"/api/img/badge/{car_id}"
+            car_data["image_url"] = get_car_or_track_web_image(car_id, car_data.get("name"))
             cars_list.append(car_data)
 
     except Exception as e:
@@ -564,10 +643,12 @@ def get_tracks():
                     layout_name = sub.name
                     t_info = parse_track_json(sub / "ui_track.json", track_id, layout_name)
                     t_info["preview_url"] = f"/api/img/track/{track_id}?layout={layout_name}"
+                    t_info["image_url"] = get_car_or_track_web_image(track_id, t_info.get("name"))
                     tracks_list.append(t_info)
             elif base_ui_json.exists():
                 t_info = parse_track_json(base_ui_json, track_id, "")
                 t_info["preview_url"] = f"/api/img/track/{track_id}"
+                t_info["image_url"] = get_car_or_track_web_image(track_id, t_info.get("name"))
                 tracks_list.append(t_info)
             else:
                 # Caso não tenha ui_track.json, cria entrada básica
@@ -576,7 +657,8 @@ def get_tracks():
                     "name": track_id.replace("_", " ").title(),
                     "layout": "",
                     "specs": {"length": "N/D", "pitboxes": "N/D", "country": "", "city": ""},
-                    "preview_url": f"/api/img/track/{track_id}"
+                    "preview_url": f"/api/img/track/{track_id}",
+                    "image_url": get_car_or_track_web_image(track_id)
                 })
 
     except Exception as e:
@@ -625,75 +707,120 @@ def parse_track_json(json_path, track_id, layout):
 
 @app.route('/api/img/car/<car_id>/<skin_id>', methods=['GET'])
 def get_car_skin_image(car_id, skin_id):
+    # Descodificar URL para tratar espacos e caracteres especiais (ex: '00 racing red')
+    clean_car_id = urllib.parse.unquote(car_id).strip()
+    clean_skin_id = urllib.parse.unquote(skin_id).strip()
+    
     ac_path, _ = get_resolved_paths()
-    skin_dir = ac_path / "content" / "cars" / car_id / "skins" / skin_id
+    car_skins_dir = ac_path / "content" / "cars" / clean_car_id / "skins"
     
-    candidates = [
-        skin_dir / "preview.jpg",
-        skin_dir / "preview.png",
-        skin_dir / "preview.jpeg",
-        skin_dir / "Preview.jpg"
-    ]
-    
-    for c in candidates:
-        if c.exists() and c.is_file():
-            mime = "image/jpeg" if c.suffix.lower() in [".jpg", ".jpeg"] else "image/png"
-            return send_file(c, mimetype=mime)
-            
-    # Tenta qualquer preview em qualquer skin do carro
-    car_skins_dir = ac_path / "content" / "cars" / car_id / "skins"
-    if car_skins_dir.exists():
+    if car_skins_dir.exists() and car_skins_dir.is_dir():
+        # 1. Tentar pasta exata da skin ou correspondencia case-insensitive
+        target_dir = None
+        exact_dir = car_skins_dir / clean_skin_id
+        if exact_dir.exists() and exact_dir.is_dir():
+            target_dir = exact_dir
+        else:
+            skin_lower = clean_skin_id.lower()
+            try:
+                for s in car_skins_dir.iterdir():
+                    if s.is_dir() and s.name.lower() == skin_lower:
+                        target_dir = s
+                        break
+            except Exception:
+                pass
+                
+        if target_dir:
+            preview_file = find_preview_image_in_dir(target_dir)
+            if preview_file:
+                mime = "image/jpeg" if preview_file.suffix.lower() in [".jpg", ".jpeg"] else "image/png"
+                return send_file(preview_file, mimetype=mime)
+
+        # 2. Se a skin pedida nao tem preview, tenta noutra skin qualquer do mesmo carro
         try:
             for s in car_skins_dir.iterdir():
                 if s.is_dir():
-                    for f in ["preview.jpg", "preview.png"]:
-                        p = s / f
-                        if p.exists():
-                            return send_file(p, mimetype="image/jpeg" if f.endswith(".jpg") else "image/png")
+                    preview_file = find_preview_image_in_dir(s)
+                    if preview_file:
+                        mime = "image/jpeg" if preview_file.suffix.lower() in [".jpg", ".jpeg"] else "image/png"
+                        return send_file(preview_file, mimetype=mime)
         except Exception:
             pass
 
-    # Fallback SVG estilizado gaming com gradiente e design futurista
-    return Response(generate_car_placeholder_svg(car_id, skin_id), mimetype='image/svg+xml')
+    # 3. Fallback para foto real de alta qualidade (Demo / Web / Wikipedia)
+    web_url = get_car_or_track_web_image(clean_car_id)
+    if web_url:
+        return redirect(web_url, code=302)
+
+    # 4. Fallback final: SVG estilizado se tudo o resto falhar
+    return Response(generate_car_placeholder_svg(clean_car_id, clean_skin_id), mimetype='image/svg+xml')
 
 @app.route('/api/img/badge/<car_id>', methods=['GET'])
 def get_car_badge(car_id):
+    clean_car_id = urllib.parse.unquote(car_id).strip()
     ac_path, _ = get_resolved_paths()
-    badge_path = ac_path / "content" / "cars" / car_id / "ui" / "badge.png"
+    badge_path = ac_path / "content" / "cars" / clean_car_id / "ui" / "badge.png"
     
     if badge_path.exists() and badge_path.is_file():
         return send_file(badge_path, mimetype='image/png')
         
-    return Response(generate_badge_placeholder_svg(car_id), mimetype='image/svg+xml')
+    return Response(generate_badge_placeholder_svg(clean_car_id), mimetype='image/svg+xml')
 
 @app.route('/api/img/track/<track_id>', methods=['GET'])
-@app.route('/api/img/track/<track_id>/<layout>', methods=['GET'])
+@app.route('/api/img/track/<track_id>/<path:layout>', methods=['GET'])
 def get_track_preview(track_id, layout=None):
+    clean_track_id = urllib.parse.unquote(track_id).strip()
     layout_arg = layout or request.args.get('layout', '')
-    ac_path, _ = get_resolved_paths()
-    
-    track_ui = ac_path / "content" / "tracks" / track_id / "ui"
-    
-    candidates = []
     if layout_arg:
-        candidates.extend([
-            track_ui / layout_arg / "preview.png",
-            track_ui / layout_arg / "preview.jpg",
-            track_ui / layout_arg / "Preview.png"
-        ])
-        
-    candidates.extend([
-        track_ui / "preview.png",
-        track_ui / "preview.jpg",
-        track_ui / "Preview.png"
-    ])
+        layout_arg = urllib.parse.unquote(layout_arg).strip()
+
+    ac_path, _ = get_resolved_paths()
+    track_ui = ac_path / "content" / "tracks" / clean_track_id / "ui"
     
-    for c in candidates:
-        if c.exists() and c.is_file():
-            mime = "image/png" if c.suffix.lower() == ".png" else "image/jpeg"
-            return send_file(c, mimetype=mime)
-            
-    return Response(generate_track_placeholder_svg(track_id, layout_arg), mimetype='image/svg+xml')
+    if track_ui.exists() and track_ui.is_dir():
+        # Tenta layout especifico
+        if layout_arg:
+            layout_dir = track_ui / layout_arg
+            if layout_dir.exists() and layout_dir.is_dir():
+                prev = find_preview_image_in_dir(layout_dir)
+                if prev:
+                    mime = "image/png" if prev.suffix.lower() == ".png" else "image/jpeg"
+                    return send_file(prev, mimetype=mime)
+
+            layout_lower = layout_arg.lower()
+            try:
+                for sub in track_ui.iterdir():
+                    if sub.is_dir() and sub.name.lower() == layout_lower:
+                        prev = find_preview_image_in_dir(sub)
+                        if prev:
+                            mime = "image/png" if prev.suffix.lower() == ".png" else "image/jpeg"
+                            return send_file(prev, mimetype=mime)
+            except Exception:
+                pass
+
+        # Tenta na raiz de ui/
+        prev = find_preview_image_in_dir(track_ui)
+        if prev:
+            mime = "image/png" if prev.suffix.lower() == ".png" else "image/jpeg"
+            return send_file(prev, mimetype=mime)
+
+    # Fallback para foto real de alta qualidade da pista (Web / Wikipedia)
+    web_url = get_car_or_track_web_image(clean_track_id)
+    if web_url:
+        return redirect(web_url, code=302)
+
+    return Response(generate_track_placeholder_svg(clean_track_id, layout_arg), mimetype='image/svg+xml')
+
+@app.route('/api/img/placeholder/car', methods=['GET'])
+def get_car_placeholder():
+    cid = request.args.get('id', 'car')
+    sid = request.args.get('skin', 'default')
+    return Response(generate_car_placeholder_svg(cid, sid), mimetype='image/svg+xml')
+
+@app.route('/api/img/placeholder/track', methods=['GET'])
+def get_track_placeholder():
+    tid = request.args.get('id', 'track')
+    return Response(generate_track_placeholder_svg(tid, ''), mimetype='image/svg+xml')
 
 # ----------------- GERADORES DE PLACEHOLDER SVG -----------------
 

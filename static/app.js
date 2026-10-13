@@ -348,10 +348,11 @@ function renderCarsGrid() {
   grid.innerHTML = filtered.map(car => {
     const isSelected = state.selectedCar && state.selectedCar.id === car.id;
     const skin = (isSelected && state.selectedSkin) ? state.selectedSkin : car.default_skin;
-    const previewUrl = `/api/img/car/${car.id}/${skin}`;
-    const badgeUrl = `/api/img/badge/${car.id}`;
+    const previewUrl = `/api/img/car/${encodeURIComponent(car.id)}/${encodeURIComponent(skin)}`;
+    const badgeUrl = `/api/img/badge/${encodeURIComponent(car.id)}`;
     const bhp = car.specs ? car.specs.bhp : 'N/D';
     const weight = car.specs ? car.specs.weight : 'N/D';
+    const fallbackWeb = car.image_url || '';
 
     return `
       <div 
@@ -369,7 +370,8 @@ function renderCarsGrid() {
             alt="${car.name}" 
             loading="lazy" 
             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            onerror="this.src='/api/img/car/${car.id}/default'"
+            style="object-fit: cover;"
+            onerror="if (!this.dataset.triedWeb && '${fallbackWeb}') { this.dataset.triedWeb='1'; this.src='${fallbackWeb}'; } else if (!this.dataset.triedSvg) { this.dataset.triedSvg='1'; this.src='/api/img/placeholder/car?id=${encodeURIComponent(car.id)}&skin=${encodeURIComponent(skin)}'; }"
           >
           
           <!-- Badge do Fabricante (Canto Superior Esquerdo) -->
@@ -488,7 +490,8 @@ function renderSkinsGrid(car) {
 
   container.innerHTML = car.skins.map(skinName => {
     const isSelected = state.tempSkin === skinName;
-    const previewUrl = `/api/img/car/${car.id}/${skinName}`;
+    const previewUrl = `/api/img/car/${encodeURIComponent(car.id)}/${encodeURIComponent(skinName)}`;
+    const fallbackWeb = car.image_url || '';
 
     return `
       <div 
@@ -505,7 +508,8 @@ function renderSkinsGrid(car) {
             alt="${skinName}" 
             loading="lazy" 
             class="w-full h-full object-cover"
-            onerror="this.src='/api/img/car/${car.id}/default'"
+            style="object-fit: cover;"
+            onerror="if (!this.dataset.triedWeb && '${fallbackWeb}') { this.dataset.triedWeb='1'; this.src='${fallbackWeb}'; } else if (!this.dataset.triedSvg) { this.dataset.triedSvg='1'; this.src='/api/img/placeholder/car?id=${encodeURIComponent(car.id)}&skin=${encodeURIComponent(skinName)}'; }"
           >
           ${
             isSelected 
@@ -531,7 +535,22 @@ function previewSkin(skinName) {
 function updateSkinLivePreview(carId, skinName) {
   const img = document.getElementById('skin-live-preview');
   const title = document.getElementById('skin-live-title');
-  if (img) img.src = `/api/img/car/${carId}/${skinName}`;
+  if (img) {
+    const car = state.cars.find(c => c.id === carId);
+    img.src = `/api/img/car/${encodeURIComponent(carId)}/${encodeURIComponent(skinName)}`;
+    img.style.objectFit = 'cover';
+    img.dataset.triedWeb = '';
+    img.dataset.triedSvg = '';
+    img.onerror = function() {
+      if (!this.dataset.triedWeb && car && car.image_url) {
+        this.dataset.triedWeb = '1';
+        this.src = car.image_url;
+      } else if (!this.dataset.triedSvg) {
+        this.dataset.triedSvg = '1';
+        this.src = `/api/img/placeholder/car?id=${encodeURIComponent(carId)}&skin=${encodeURIComponent(skinName)}`;
+      }
+    };
+  }
   if (title) title.textContent = skinName.replace(/_/g, ' ');
 }
 
@@ -577,6 +596,8 @@ function renderTracksGrid() {
     const length = track.specs ? track.specs.length : 'N/D';
     const pitboxes = track.specs ? track.specs.pitboxes : 'N/D';
     const country = track.specs ? track.specs.country : '';
+    const fallbackWeb = track.image_url || '';
+    const trackPreview = track.preview_url || `/api/img/track/${encodeURIComponent(track.id)}${track.layout ? '?layout=' + encodeURIComponent(track.layout) : ''}`;
 
     return `
       <div 
@@ -589,11 +610,12 @@ function renderTracksGrid() {
       >
         <div class="relative w-full aspect-[16/9] bg-slate-950 overflow-hidden">
           <img 
-            src="${track.preview_url}" 
+            src="${trackPreview}" 
             alt="${track.name}" 
             loading="lazy" 
             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            onerror="this.src='/api/img/track/${track.id}'"
+            style="object-fit: cover;"
+            onerror="if (!this.dataset.triedWeb && '${fallbackWeb}') { this.dataset.triedWeb='1'; this.src='${fallbackWeb}'; } else if (!this.dataset.triedSvg) { this.dataset.triedSvg='1'; this.src='/api/img/placeholder/track?id=${encodeURIComponent(track.id)}'; }"
           >
           
           <div class="absolute top-2.5 right-2.5 flex items-center gap-1.5">
@@ -727,7 +749,17 @@ function updateSummaryBar() {
 
   if (state.selectedCar) {
     const skin = state.selectedSkin || state.selectedCar.default_skin || 'default';
-    if (carImg) carImg.src = `/api/img/car/${state.selectedCar.id}/${skin}`;
+    if (carImg) {
+      carImg.src = `/api/img/car/${encodeURIComponent(state.selectedCar.id)}/${encodeURIComponent(skin)}`;
+      carImg.style.objectFit = 'cover';
+      carImg.dataset.triedWeb = '';
+      carImg.onerror = function() {
+        if (!this.dataset.triedWeb && state.selectedCar.image_url) {
+          this.dataset.triedWeb = '1';
+          this.src = state.selectedCar.image_url;
+        }
+      };
+    }
     if (carName) carName.textContent = state.selectedCar.name;
     if (skinTag) skinTag.textContent = skin.replace(/_/g, ' ');
   }
