@@ -1,33 +1,51 @@
 {
   "ac_path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\assettocorsa",
   "race_ini": "~/Documents/Assetto Corsa/cfg/race.ini",
+  "remote_pc_url": "",
   "favorite_servers": [
     {
       "id": "srp-public",
       "name": "SRP - Shutoko Revival Project [PT/EU]",
-      "track": "Shutoko Revival Project (Shibaura)",
+      "tag": "Shutoko",
+      "track": "Shutoko Revival Project (Shibaura PA)",
       "car_count": "32 slots",
       "ping": "24ms",
       "ip": "141.95.74.88:9600",
+      "url": "acmanager://race/online/join?ip=141.95.74.88&httpPort=9600",
       "cm_link": "https://acstuff.ru/s/q:race/online/join?ip=141.95.74.88&httpPort=9600"
     },
     {
       "id": "nords-tourist",
       "name": "Nürburgring Nordschleife - Tourist Trackday",
+      "tag": "Nordschleife",
       "track": "Nordschleife (Tourist)",
       "car_count": "24 slots",
       "ping": "38ms",
       "ip": "51.89.96.120:9600",
+      "url": "acmanager://race/online/join?ip=51.89.96.120&httpPort=9600",
       "cm_link": "https://acstuff.ru/s/q:race/online/join?ip=51.89.96.120&httpPort=9600"
     },
     {
       "id": "drift-playground",
       "name": "Drift Playground - Tandem Masters",
+      "tag": "Drift",
       "track": "Drift Playground",
       "car_count": "16 slots",
       "ping": "31ms",
       "ip": "135.125.188.42:9600",
+      "url": "acmanager://race/online/join?ip=135.125.188.42&httpPort=9600",
       "cm_link": "https://acstuff.ru/s/q:race/online/join?ip=135.125.188.42&httpPort=9600"
+    },
+    {
+      "id": "akina-touge",
+      "name": "Mount Akina - Downhill Touge Battles",
+      "tag": "Touge",
+      "track": "Mount Akina 2017",
+      "car_count": "12 slots",
+      "ping": "28ms",
+      "ip": "178.32.115.60:9600",
+      "url": "acmanager://race/online/join?ip=178.32.115.60&httpPort=9600",
+      "cm_link": "https://acstuff.ru/s/q:race/online/join?ip=178.32.115.60&httpPort=9600"
     }
   ]
 }

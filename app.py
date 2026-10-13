@@ -2,10 +2,16 @@ import os
 import sys
 import json
 import re
+import time
+import shutil
 import socket
 import subprocess
 import traceback
 from pathlib import Path
+try:
+    import psutil
+except ImportError:
+    psutil = None
 from flask import Flask, request, jsonify, render_template, send_file, Response, send_from_directory
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -733,56 +739,104 @@ def generate_badge_placeholder_svg(car_id):
   <text x="50" y="60" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="26" font-weight="900" text-anchor="middle">{name}</text>
 </svg>"""
 
-# ----------------- LANÇAMENTO DE CORRIDA & RACE.INI -----------------
+# ----------------- GESTÃO DE PROCESSOS DO ASSETTO CORSA -----------------
+
+def is_game_running():
+    """Verifica se o acs.exe ou acs_x86.exe está a correr no Windows."""
+    if psutil:
+        try:
+            for proc in psutil.process_iter(['name']):
+                pname = proc.info.get('name')
+                if pname and pname.lower() in ['acs.exe', 'acs_x86.exe']:
+                    return True
+        except Exception:
+            pass
+            
+    if sys.platform == 'win32':
+        try:
+            out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq acs.exe'], capture_output=True, text=True)
+            if 'acs.exe' in out.stdout.lower():
+                return True
+        except Exception:
+            pass
+    return False
+
+def kill_game_process():
+    """Encerra o jogo forçadamente (botão de emergência / sair para o desktop)."""
+    killed = False
+    if psutil:
+        try:
+            for proc in psutil.process_iter(['name', 'pid']):
+                pname = proc.info.get('name')
+                if pname and pname.lower() in ['acs.exe', 'acs_x86.exe']:
+                    proc.kill()
+                    killed = True
+        except Exception:
+            pass
+
+    if sys.platform == 'win32':
+        try:
+            subprocess.run(['taskkill', '/F', '/IM', 'acs.exe'], capture_output=True, shell=False)
+            subprocess.run(['taskkill', '/F', '/IM', 'acs_x86.exe'], capture_output=True, shell=False)
+            killed = True
+        except Exception:
+            pass
+    return killed
+
+# ----------------- ATUALIZAÇÃO SEGURA DO RACE.INI -----------------
 
 def hour_to_sun_angle(time_str):
     """
     Converte horário 'HH:MM' (ex: '14:30') para o ângulo de sol SUN_ANGLE do Assetto Corsa.
-    Em AC, 13:00 é por volta de 16 graus, 08:00 é -64, 18:00 é 64.
+    Em AC: 13:00 ~ 16.0 deg, 08:00 ~ -48.0 deg, 18:00 ~ 80.0 deg.
     """
     try:
         parts = time_str.split(':')
         h = int(parts[0])
         m = int(parts[1]) if len(parts) > 1 else 0
         total_hours = h + (m / 60.0)
-        # 13h = 16 deg, cada hora varia aprox 12.8 graus
         angle = (total_hours - 13.0) * 12.8 + 16.0
         return round(angle, 1)
     except Exception:
         return 16.0
 
-@app.route('/api/launch', methods=['POST'])
-def launch_race():
-    payload = request.json or {}
-    car = payload.get("car", "ks_ferrari_488_gt3")
-    skin = payload.get("skin", "default")
-    track = payload.get("track", "spa")
-    layout = payload.get("layout", "")
-    mode = payload.get("mode", "practice").lower() # practice, hotlap, drift, race
-    time_of_day = payload.get("time", "14:00")
-    start_game = payload.get("start_game", True)
-
-    _, race_ini_path = get_resolved_paths()
-    ac_path, _ = get_resolved_paths()
+def update_race_ini_file(race_ini_path, updates):
+    """
+    Atualiza apenas as chaves necessárias no race.ini preservandomaiúsculas,
+    comentários e a formatação exata que o simulador exige.
+    Faz backup prévio para race.ini.bak.
+    """
+    race_ini_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Mapeamento do tipo de sessão
-    mode_types = {
-        "practice": ("Practice", 1),
-        "trackday": ("Practice", 1),
-        "race": ("Quick Race", 2),
-        "drift": ("Drift", 3),
-        "hotlap": ("Hotlap", 4)
-    }
-    session_name, session_type = mode_types.get(mode, ("Practice", 1))
-    sun_angle = hour_to_sun_angle(time_of_day)
+    # 1. Fazer cópia de segurança se o ficheiro existir
+    if race_ini_path.exists() and race_ini_path.is_file():
+        try:
+            bak_path = race_ini_path.with_name(race_ini_path.name + ".bak")
+            shutil.copyfile(race_ini_path, bak_path)
+            print(f"[AC REMOTE] Backup criado: {bak_path}")
+        except Exception as e:
+            print(f"[AVISO] Falha ao criar backup do race.ini: {e}")
 
-    ini_content = f"""[RACE]
+    # Se o ficheiro não existir, gera o template padrão completo
+    if not race_ini_path.exists() or race_ini_path.stat().st_size == 0:
+        car = updates.get("CAR_0", {}).get("MODEL", "ks_ferrari_488_gt3")
+        skin = updates.get("CAR_0", {}).get("SKIN", "default")
+        track = updates.get("RACE", {}).get("TRACK", "spa")
+        layout = updates.get("RACE", {}).get("CONFIG_TRACK", "")
+        mode_name = updates.get("SESSION_0", {}).get("NAME", "Practice")
+        mode_type = updates.get("SESSION_0", {}).get("TYPE", "1")
+        sun_angle = updates.get("LIGHTING", {}).get("SUN_ANGLE", "16.0")
+
+        initial_content = f"""[RACE]
 TRACK={track}
 CONFIG_TRACK={layout}
 CARS=1
 AI_LEVEL=98
 FIXED_SETUP=0
 PENALTIES=1
+MODEL={car}
+MODEL_CONFIG=
+SKIN={skin}
 
 [GHOST_CAR]
 RECORDING=1
@@ -813,8 +867,8 @@ LAP_GAIN=10
 SESSION_TRANSFER=90
 
 [SESSION_0]
-NAME={session_name}
-TYPE={session_type}
+NAME={mode_name}
+TYPE={mode_type}
 DURATION_MINUTES=0
 SPAWN_SET=PIT
 
@@ -825,24 +879,141 @@ DRIVER_NAME=AC Remote Driver
 NATIONALITY=
 NATION_CODE=
 """
+        with open(race_ini_path, "w", encoding="utf-8") as f:
+            f.write(initial_content)
+        return True
+
+    # 2. Ler linhas existentes e atualizar apenas as chaves necessárias preservando o resto
+    with open(race_ini_path, "r", encoding="utf-8", errors="ignore") as f:
+        lines = f.readlines()
+
+    updated_lines = []
+    current_section = None
+    applied_keys = {sec: set() for sec in updates}
+
+    for line in lines:
+        stripped = line.strip()
+        # Verificar se é cabeçalho de secção
+        if stripped.startswith("[") and stripped.endswith("]"):
+            # Se tínhamos chaves por aplicar na secção anterior, insere-as antes de mudar de secção
+            if current_section and current_section in updates:
+                for k, v in updates[current_section].items():
+                    if k not in applied_keys[current_section]:
+                        updated_lines.append(f"{k}={v}\n")
+                        applied_keys[current_section].add(k)
+            
+            current_section = stripped[1:-1].strip().upper()
+            updated_lines.append(line)
+            continue
+
+        if current_section and current_section in updates and "=" in line:
+            key_part = line.split("=", 1)[0].strip()
+            key_upper = key_part.upper()
+            if key_upper in updates[current_section]:
+                val = updates[current_section][key_upper]
+                updated_lines.append(f"{key_upper}={val}\n")
+                applied_keys[current_section].add(key_upper)
+                continue
+
+        updated_lines.append(line)
+
+    # Chaves pendentes da última secção
+    if current_section and current_section in updates:
+        for k, v in updates[current_section].items():
+            if k not in applied_keys[current_section]:
+                updated_lines.append(f"{k}={v}\n")
+                applied_keys[current_section].add(k)
+
+    # Se alguma secção inteira não existia no ficheiro original, acrescenta-a
+    for sec, keys in updates.items():
+        if not any(k in applied_keys[sec] for k in keys):
+            updated_lines.append(f"\n[{sec}]\n")
+            for k, v in keys.items():
+                updated_lines.append(f"{k}={v}\n")
+
+    with open(race_ini_path, "w", encoding="utf-8") as f:
+        f.writelines(updated_lines)
+
+    return True
+
+# ----------------- ROTAS DE LANÇAMENTO E CONTROLO DE JOGO -----------------
+
+@app.route('/api/launch', methods=['POST'])
+def launch_race():
+    payload = request.json or {}
+    car = payload.get("car_id") or payload.get("car") or "ks_ferrari_488_gt3"
+    skin = payload.get("skin_id") or payload.get("skin") or "default"
+    track = payload.get("track_id") or payload.get("track") or "spa"
+    layout = payload.get("track_layout") or payload.get("layout") or ""
+    mode = (payload.get("mode") or "practice").lower()
+    start_game = payload.get("start_game", True)
+
+    # Cálculo do sun_angle
+    if "sun_angle" in payload and payload["sun_angle"] is not None:
+        try:
+            sun_angle = float(payload["sun_angle"])
+        except Exception:
+            sun_angle = 16.0
+    else:
+        time_str = payload.get("time", "14:00")
+        sun_angle = hour_to_sun_angle(time_str)
+
+    mode_map = {
+        "practice": ("Practice", 1),
+        "trackday": ("Practice", 1),
+        "race": ("Quick Race", 2),
+        "drift": ("Drift", 3),
+        "hotlap": ("Hotlap", 4)
+    }
+    session_name, session_type = mode_map.get(mode, ("Practice", 1))
+
+    _, race_ini_path = get_resolved_paths()
+    ac_path, _ = get_resolved_paths()
+
+    # Se o jogo já estiver a correr, fecha-o primeiro com segurança
+    was_running = is_game_running()
+    if was_running:
+        print("[AC REMOTE] O jogo já estava a correr. A encerrar sessão anterior...")
+        kill_game_process()
+        time.sleep(1.0)
+
+    # Atualização precisa e segura do race.ini mantendo maiúsculas exigidas pelo Assetto Corsa
+    ini_updates = {
+        "RACE": {
+            "MODEL": car,
+            "MODEL_CONFIG": "",
+            "SKIN": skin,
+            "TRACK": track,
+            "CONFIG_TRACK": layout
+        },
+        "CAR_0": {
+            "MODEL": car,
+            "SKIN": skin
+        },
+        "SESSION_0": {
+            "NAME": session_name,
+            "TYPE": str(session_type)
+        },
+        "LIGHTING": {
+            "SUN_ANGLE": str(sun_angle)
+        }
+    }
 
     write_success = False
     try:
-        race_ini_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(race_ini_path, "w", encoding="utf-8") as f:
-            f.write(ini_content)
-        write_success = True
-        print(f"[AC REMOTE] race.ini atualizado com sucesso em: {race_ini_path}")
+        write_success = update_race_ini_file(race_ini_path, ini_updates)
+        print(f"[AC REMOTE] race.ini atualizado com sucesso em {race_ini_path} (backup .bak guardado).")
     except Exception as e:
-        print(f"[ERRO] Falha ao escrever em {race_ini_path}: {e}")
+        print(f"[ERRO] Falha ao atualizar race.ini: {e}")
 
-    # Lançar executável se solicitado
+    # Iniciar executável
     game_started = False
     game_msg = ""
     if start_game and write_success:
         acs_exe = ac_path / "acs.exe"
         acs_x86 = ac_path / "acs_x86.exe"
-        
+        cm_exe = ac_path / "Content Manager.exe"
+
         target_exe = None
         if acs_exe.exists():
             target_exe = acs_exe
@@ -856,30 +1027,107 @@ NATION_CODE=
                 game_msg = f"Jogo iniciado diretamente via {target_exe.name}!"
             except Exception as e:
                 game_msg = f"Falha ao executar {target_exe.name}: {e}"
+        elif cm_exe.exists():
+            try:
+                subprocess.Popen([str(cm_exe)], cwd=str(ac_path), shell=False)
+                game_started = True
+                game_msg = "Content Manager iniciado para correr a sessão configurada!"
+            except Exception as e:
+                game_msg = f"Falha ao abrir Content Manager: {e}"
         else:
-            # Tentar iniciar via Steam URL se o acs.exe não estiver na pasta
             try:
                 os.startfile("steam://rungameid/244210")
                 game_started = True
                 game_msg = "Comando enviado para o Assetto Corsa via Steam!"
-            except Exception as e:
-                game_msg = f"race.ini gravado. Inicie o Assetto Corsa / Content Manager no PC para entrar na corrida."
+            except Exception:
+                game_msg = "race.ini e cópia .bak gravados com sucesso! Inicia o jogo no PC para entrar diretamente na corrida."
 
     return jsonify({
         "success": write_success,
         "ini_path": str(race_ini_path),
+        "backup_created": (race_ini_path.parent / (race_ini_path.name + ".bak")).exists(),
+        "was_running_restarted": was_running,
         "game_started": game_started,
-        "message": game_msg or ("Configuração de corrida gravada no race.ini com sucesso!" if write_success else "Erro ao gravar race.ini"),
+        "message": game_msg or "Configuração de corrida gravada no race.ini com sucesso!",
         "details": {
             "car": car,
             "skin": skin,
             "track": track,
             "layout": layout,
             "mode": session_name,
-            "sun_angle": sun_angle,
-            "time": time_of_day
+            "sun_angle": sun_angle
         }
     })
+
+@app.route('/api/kill_game', methods=['POST'])
+def kill_game():
+    """Botão de emergência para encerrar a corrida e sair para o desktop."""
+    was_running = is_game_running()
+    killed = kill_game_process()
+    time.sleep(0.5)
+    
+    return jsonify({
+        "success": True,
+        "was_running": was_running,
+        "message": "Corrida encerrada no PC com sucesso! A regressar ao Desktop." if (was_running or killed) else "O Assetto Corsa não estava em execução."
+    })
+
+@app.route('/api/join_server', methods=['POST'])
+def join_server():
+    """Abre o Content Manager automaticamente através do link acmanager://."""
+    payload = request.json or {}
+    url = payload.get("url", "")
+    server_id = payload.get("server_id", "")
+
+    if not url and server_id:
+        cfg = load_config()
+        for s in cfg.get("favorite_servers", []):
+            if s.get("id") == server_id:
+                url = s.get("url") or s.get("cm_link") or ""
+                break
+
+    if not url:
+        return jsonify({"success": False, "message": "Nenhum link ou servidor fornecido."}), 400
+
+    # Normalizar link para garantir que o Content Manager o abra pelo protocolo
+    clean_url = url.strip()
+    
+    # Se for link https do acstuff, tentar converter para acmanager:// se preferido, ou abrir direto
+    if clean_url.startswith("https://acstuff.ru/s/q:race/online/join?"):
+        query = clean_url.split("?", 1)[1]
+        acmanager_proto = f"acmanager://race/online/join?{query}"
+    elif clean_url.startswith("acmanager://"):
+        acmanager_proto = clean_url
+    else:
+        acmanager_proto = clean_url
+
+    try:
+        if sys.platform == 'win32':
+            os.startfile(acmanager_proto)
+        else:
+            subprocess.Popen(['xdg-open', acmanager_proto])
+            
+        return jsonify({
+            "success": True,
+            "message": "A abrir servidor no Content Manager no PC...",
+            "url": acmanager_proto
+        })
+    except Exception as e:
+        # Fallback tentando abrir o link web caso o protocolo não esteja associado
+        try:
+            if sys.platform == 'win32':
+                os.startfile(clean_url)
+            return jsonify({
+                "success": True,
+                "message": "A abrir link do servidor no PC...",
+                "url": clean_url
+            })
+        except Exception as e2:
+            return jsonify({
+                "success": False,
+                "message": f"Erro ao invocar Content Manager: {e2}"
+            }), 500
+
 
 # ----------------- INICIALIZAÇÃO -----------------
 

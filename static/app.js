@@ -737,10 +737,10 @@ async function launchRace() {
   if (btnTxt) btnTxt.textContent = 'A LANÇAR...';
 
   const payload = {
-    car: state.selectedCar.id,
-    skin: state.selectedSkin || 'default',
-    track: state.selectedTrack.id,
-    layout: state.selectedLayout || '',
+    car_id: state.selectedCar.id,
+    skin_id: state.selectedSkin || 'default',
+    track_id: state.selectedTrack.id,
+    track_layout: state.selectedLayout || '',
     mode: state.selectedMode,
     time: state.selectedTime,
     start_game: true
@@ -768,6 +768,33 @@ async function launchRace() {
       btn.classList.remove('opacity-70');
     }
     if (btnTxt) btnTxt.textContent = 'LANÇAR NO PC';
+  }
+}
+
+// Botão de Emergência: Fechar Corrida / Sair para o Desktop
+async function killGame() {
+  hapticPulse('heavy');
+  showToast('A fechar corrida no PC... 🛑', '🛑');
+
+  const btn = document.getElementById('btn-kill-game');
+  if (btn) btn.classList.add('opacity-50');
+
+  try {
+    const res = await apiFetch('/api/kill_game', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'Corrida encerrada com sucesso!', '🛑');
+    } else {
+      showToast(data.message || 'Erro ao fechar o jogo', '⚠️');
+    }
+  } catch (err) {
+    console.error('Erro ao chamar /api/kill_game:', err);
+    showToast('Falha na comunicação com o PC', '❌');
+  } finally {
+    if (btn) btn.classList.remove('opacity-50');
   }
 }
 
@@ -847,53 +874,134 @@ function setGarageSection(section) {
 
 // ================= SERVIDORES ONLINE =================
 
+function setServerTagFilter(tag) {
+  hapticPulse('light');
+  state.activeServerTagFilter = tag;
+
+  document.querySelectorAll('.srv-tag-btn').forEach(btn => {
+    const isThis = btn.getAttribute('data-tag') === tag;
+    btn.classList.toggle('active', isThis);
+    btn.classList.toggle('border-brand-red', isThis);
+    btn.classList.toggle('bg-brand-red', isThis);
+    btn.classList.toggle('text-white', isThis);
+    btn.classList.toggle('border-slate-800', !isThis);
+    btn.classList.toggle('bg-slate-900/90', !isThis);
+    btn.classList.toggle('text-slate-400', !isThis);
+  });
+
+  renderServersList(state.config.favorite_servers || []);
+}
+
+function selectNewSrvTag(tag) {
+  hapticPulse('light');
+  const input = document.getElementById('new-srv-tag');
+  if (input) input.value = tag;
+
+  document.querySelectorAll('.tag-choice-btn').forEach(btn => {
+    const isThis = btn.getAttribute('data-tag') === tag;
+    btn.classList.toggle('border-brand-red', isThis);
+    btn.classList.toggle('bg-brand-red', isThis);
+    btn.classList.toggle('text-white', isThis);
+    btn.classList.toggle('border-slate-800', !isThis);
+    btn.classList.toggle('bg-slate-900', !isThis);
+    btn.classList.toggle('text-slate-300', !isThis);
+  });
+}
+
 function renderServersList(servers) {
   const list = document.getElementById('servers-list');
   if (!list) return;
 
-  if (servers.length === 0) {
+  const currentTag = state.activeServerTagFilter || 'ALL';
+  const filtered = servers.filter(srv => {
+    if (currentTag === 'ALL') return true;
+    return (srv.tag || '').toLowerCase() === currentTag.toLowerCase();
+  });
+
+  if (filtered.length === 0) {
     list.innerHTML = `
       <div class="p-8 text-center text-slate-500 text-xs bg-brand-card rounded-2xl border border-brand-border">
-        Nenhum servidor favorito guardado. Adiciona um servidor para acesso rápido!
+        Nenhum servidor encontrado para a categoria selecionada.
       </div>`;
     return;
   }
 
-  list.innerHTML = servers.map(srv => {
+  const tagColors = {
+    'shutoko': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    'drift': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+    'touge': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    'nordschleife': 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    'trackday': 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+  };
+
+  list.innerHTML = filtered.map(srv => {
+    const tag = srv.tag || 'Online';
+    const tagClass = tagColors[tag.toLowerCase()] || 'bg-slate-800 text-slate-300 border-slate-700';
+    const targetUrl = srv.url || srv.cm_link || '';
+
     return `
-      <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3">
-        <div class="flex items-start justify-between">
+      <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3 shadow-lg">
+        <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase border ${tagClass}">
+                ${tag}
+              </span>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                ${srv.ping || 'Online'}
+              </span>
+            </div>
             <h3 class="font-racing text-lg font-bold text-white tracking-wide leading-tight truncate">${srv.name}</h3>
             <p class="text-xs text-brand-cyan mt-0.5 truncate">🏁 ${srv.track || 'Circuito Desconhecido'}</p>
           </div>
-          <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold ml-2">
-            ${srv.ping || 'Online'}
-          </span>
         </div>
 
-        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-slate-800">
-          <span>IP: ${srv.ip}</span>
+        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-slate-800/80">
+          <span class="truncate max-w-[65%]">Link: ${targetUrl.replace('acmanager://race/online/join?', '').substring(0, 32)}...</span>
           <span>${srv.car_count || ''}</span>
         </div>
 
         <div class="flex gap-2 pt-1">
-          ${
-            srv.cm_link 
-              ? `<a href="${srv.cm_link}" target="_blank" class="flex-1 py-2 rounded-xl bg-brand-red text-center font-racing text-xs font-bold text-white uppercase tracking-wider shadow-md hover:bg-brand-darkred active:scale-95 transition-transform flex items-center justify-center gap-1.5">
-                   <span>🚀</span> JUNTAR VIA CONTENT MANAGER
-                 </a>`
-              : `<button onclick="copyToClipboard('${srv.ip}')" class="flex-1 py-2 rounded-xl bg-brand-red text-center font-racing text-xs font-bold text-white uppercase tracking-wider shadow-md active:scale-95 transition-transform">
-                   COPIAR IP / PORTA
-                 </button>`
-          }
-          <button onclick="deleteServer('${srv.id}')" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-700 active:scale-95 transition-transform text-xs">
+          <button 
+            onclick="joinServer('${targetUrl}', '${srv.name.replace(/'/g, "\\'")}')" 
+            class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-darkred hover:to-orange-700 text-center font-racing text-xs font-bold text-white uppercase tracking-wider shadow-md shadow-brand-red/20 active:scale-95 transition-transform flex items-center justify-center gap-1.5"
+          >
+            <span>🚀</span> ENTRAR NO SERVIDOR (CONTENT MANAGER)
+          </button>
+          
+          <button onclick="copyToClipboard('${targetUrl}')" class="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 active:scale-95 transition-transform text-xs" title="Copiar link">
+            📋
+          </button>
+
+          <button onclick="deleteServer('${srv.id}')" class="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-800 active:scale-95 transition-transform text-xs" title="Apagar">
             🗑️
           </button>
         </div>
       </div>
     `;
   }).join('');
+}
+
+async function joinServer(url, serverName) {
+  hapticPulse('heavy');
+  showToast(`A abrir ${serverName || 'servidor'} no Content Manager... 🚀`, '🚀');
+
+  try {
+    const res = await apiFetch('/api/join_server', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'Servidor aberto no Content Manager!', '🏎️');
+    } else {
+      showToast(data.message || 'Erro ao abrir Content Manager', '❌');
+    }
+  } catch (err) {
+    console.error('Erro ao chamar /api/join_server:', err);
+    showToast('Falha ao comunicar com o Content Manager no PC', '❌');
+  }
 }
 
 function openAddServerModal() {
@@ -916,22 +1024,24 @@ function closeAddServerModal() {
 
 async function saveNewServer() {
   const name = document.getElementById('new-srv-name').value.trim();
-  const ip = document.getElementById('new-srv-ip').value.trim();
+  const tag = (document.getElementById('new-srv-tag') ? document.getElementById('new-srv-tag').value.trim() : '') || 'Shutoko';
+  const url = (document.getElementById('new-srv-url') ? document.getElementById('new-srv-url').value.trim() : '') || '';
   const track = document.getElementById('new-srv-track').value.trim();
 
-  if (!name || !ip) {
-    showToast('Preenche pelo menos o nome e o IP do servidor', '⚠️');
+  if (!name || !url) {
+    showToast('Preenche pelo menos o nome e o link acmanager:// do servidor', '⚠️');
     return;
   }
 
-  const isCm = ip.startsWith('http') || ip.startsWith('acmanager:');
   const newServer = {
     id: `srv-${Date.now()}`,
     name,
-    ip: isCm ? 'Content Manager' : ip,
+    tag,
+    url,
+    cm_link: url,
     track: track || 'Pista Online',
     ping: '20ms',
-    cm_link: isCm ? ip : null
+    car_count: 'Slots Online'
   };
 
   const currentList = state.config.favorite_servers || [];
@@ -939,14 +1049,14 @@ async function saveNewServer() {
   state.config.favorite_servers = currentList;
 
   try {
-    await fetch('/api/config', {
+    await apiFetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ favorite_servers: currentList })
     });
     renderServersList(currentList);
     closeAddServerModal();
-    showToast('Servidor adicionado aos favoritos!', '✅');
+    showToast('Servidor guardado nos favoritos!', '✅');
   } catch (err) {
     showToast('Erro ao guardar servidor', '❌');
   }
@@ -958,7 +1068,7 @@ async function deleteServer(srvId) {
   state.config.favorite_servers = currentList;
 
   try {
-    await fetch('/api/config', {
+    await apiFetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ favorite_servers: currentList })
