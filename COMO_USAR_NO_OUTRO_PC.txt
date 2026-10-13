@@ -1,0 +1,41 @@
+====================================================================
+           AC REMOTE - SERVIDOR DO PC (ASSETTO CORSA)
+====================================================================
+
+Parabens por descarregares o AC Remote!
+Este pacote permite controlar o Assetto Corsa a partir do teu iPhone
+ou telemovel (escolher carros, pistas, teleporte para os boxes, etc.).
+
+--- COMO INSTALAR NO TEU PC DE JOGOS ---
+
+1. REQUISITO:
+   - Ter o Python instalado (se ainda nao tiveres, descarrega em:
+     https://www.python.org/downloads/
+     IMPORTANTE: Durante a instalacao, MARCA a opcao "Add Python to PATH").
+
+2. EXTRAIR ESTA PASTA:
+   - Extrai o ficheiro ZIP para onde quiseres no teu PC (ex: Documentos ou Ambiente de Trabalho).
+
+3. CRIAR ATALHOS NO AMBIENTE DE TRABALHO:
+   - Clica duas vezes em "create_shortcut.bat".
+   - Serao criados dois atalhos no teu Ambiente de Trabalho:
+     * "AC Remote" (Abre a janela com informacoes e IP)
+     * "AC Remote (Segundo Plano)" (Executa silenciosamente em background)
+
+4. INICIAR O SERVIDOR:
+   - Clica duas vezes em "start_ac_remote.bat" (ou no atalho no ambiente de trabalho).
+   - O servidor ira instalar automaticamente as dependencias necessarias
+     e mostrar o teu IP local (ex: http://192.168.1.150:5000).
+
+5. LIGAR O TELEMOVEL (IPHONE / ANDROID):
+   - Liga o telemovel ao mesmo Wi-Fi do computador.
+   - Abre o Safari no iPhone e acede ao endereco IP indicado:
+     👉 Exemplo: http://192.168.1.150:5000
+   - Tambem podes abrir a versao online na Vercel:
+     👉 https://ac-remote-alpha.vercel.app
+     e nas Definições colocar o IP do teu PC.
+
+6. PARA PARAR O SERVIDOR:
+   - Clica duas vezes em "parar_ac_remote.bat" ou fecha a janela da consola.
+
+====================================================================
