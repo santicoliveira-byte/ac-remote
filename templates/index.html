@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="pt" class="dark h-full bg-[#08090e] text-slate-100 select-none">
+<head>
+  <meta charset="UTF-8">
+  <title>AC Remote | Assetto Corsa</title>
+  
+  <!-- Configurações PWA Mobile-First para iOS Safari sem barras -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AC Remote">
+  <meta name="theme-color" content="#08090e">
+  <meta name="format-detection" content="telephone=no">
+  
+  <!-- Manifest & Ícones -->
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+
+  <!-- TailwindCSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              red: '#ff2449',
+              darkred: '#cc1133',
+              glow: '#ff3366',
+              cyan: '#00e5ff',
+              dark: '#08090e',
+              card: '#11131c',
+              border: '#1f2433'
+            }
+          },
+          fontFamily: {
+            racing: ['Rajdhani', 'sans-serif'],
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Rajdhani para Gaming / Cockpit vibe -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* iOS Safe Areas & Scroll Tweaks */
+    body {
+      padding-top: env(safe-area-inset-top);
+      overscroll-behavior-y: none;
+      -webkit-tap-highlight-color: transparent;
+      font-family: 'Inter', -apple-system, sans-serif;
+    }
+
+    .font-racing {
+      font-family: 'Rajdhani', sans-serif;
+    }
+
+    /* Esconder scrollbars feias mas manter funcionalidade */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* Brilho neon nos botões */
+    .glow-red {
+      box-shadow: 0 0 25px rgba(255, 36, 73, 0.45);
+    }
+    .glow-cyan {
+      box-shadow: 0 0 20px rgba(0, 229, 255, 0.35);
+    }
+
+    /* Efeito de backdrop blur gaming */
+    .glass-nav {
+      background: rgba(12, 14, 22, 0.88);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+    }
+
+    /* Animação suave para Bottom Sheet */
+    .bottom-sheet {
+      transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .bottom-sheet.closed {
+      transform: translateY(105%);
+    }
+
+    /* Animação de pulso suave */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 20px rgba(255, 36, 73, 0.4); }
+      50% { box-shadow: 0 0 32px rgba(255, 36, 73, 0.7); }
+    }
+    .pulse-btn {
+      animation: pulseGlow 2.5s infinite;
+    }
+  </style>
+</head>
+<body class="h-full w-full flex flex-col overflow-hidden bg-[#08090e] text-slate-100">
+
+  <!-- ================= TOP HEADER BAR ================= -->
+  <header class="flex-none z-30 px-4 pt-2 pb-2.5 glass-nav border-b border-brand-border flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-red to-orange-500 flex items-center justify-center shadow-lg shadow-brand-red/30">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-1.5">
+          <h1 class="font-racing text-xl font-extrabold tracking-wider leading-none text-white">AC REMOTE</h1>
+          <span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-brand-red/20 text-brand-red border border-brand-red/30 tracking-widest uppercase">PRO</span>
+        </div>
+        <p class="text-[10px] text-slate-400 font-medium tracking-tight">Assetto Corsa Mobile Controller</p>
+      </div>
+    </div>
+
+    <!-- Indicador de Status / IP -->
+    <div class="flex items-center gap-2">
+      <button id="btn-status-pill" onclick="switchTab('tab-settings')" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 active:scale-95 transition-transform">
+        <span id="status-indicator-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+        <span id="status-indicator-label" class="text-[11px] font-semibold text-slate-300">A verificar...</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= NOTIFICAÇÃO TOAST FLUTUANTE ================= -->
+  <div id="toast" class="fixed top-14 left-1/2 -translate-x-1/2 z-50 pointer-events-none transition-all duration-300 opacity-0 -translate-y-4 max-w-[90vw]">
+    <div class="glass-nav border border-slate-700/80 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-semibold text-white">
+      <span id="toast-icon" class="text-base">🚀</span>
+      <span id="toast-msg">Mensagem</span>
+    </div>
+  </div>
+
+  <!-- ================= CONTEÚDO PRINCIPAL (TABS) ================= -->
+  <main class="flex-1 relative overflow-hidden">
+
+    <!-- ----------------- TAB 1: GARAGEM & PISTA ----------------- -->
+    <section id="tab-garage" class="h-full flex flex-col overflow-y-auto no-scrollbar pb-36">
+      
+      <!-- Sub-navegação / Segmented Control Carros vs Pistas vs Sessão -->
+      <div class="sticky top-0 z-20 px-4 pt-3 pb-2.5 glass-nav border-b border-brand-border/60">
+        <div class="flex p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+          <button id="btn-seg-cars" onclick="setGarageSection('cars')" class="flex-1 py-1.5 text-xs font-bold rounded-lg transition-all bg-brand-red text-white shadow-md">
+            🏎️ CARROS (<span id="cars-badge-count">0</span>)
+          </button>
+          <button id="btn-seg-tracks" onclick="setGarageSection('tracks')" class="flex-1 py-1.5 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-white">
+            🏁 PISTAS (<span id="tracks-badge-count">0</span>)
+          </button>
+          <button id="btn-seg-session" onclick="setGarageSection('session')" class="flex-1 py-1.5 text-xs font-bold rounded-lg transition-all text-slate-400 hover:text-white">
+            ⏱️ SESSÃO
+          </button>
+        </div>
+
+        <!-- Barra de Pesquisa Rápida (para carros ou pistas) -->
+        <div id="search-container" class="mt-2.5 relative">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </div>
+          <input 
+            type="text" 
+            id="search-input" 
+            placeholder="Pesquisar por carro, marca ou pista..." 
+            class="w-full bg-slate-900/90 text-sm text-white placeholder-slate-500 rounded-xl pl-9 pr-9 py-2 border border-slate-800 focus:outline-none focus:border-brand-red transition-colors"
+            oninput="handleSearch(this.value)"
+          >
+          <button 
+            id="search-clear-btn" 
+            onclick="clearSearch()" 
+            class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white hidden"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Filtros rápidos de Marcas (Chips horizontais com scroll) -->
+        <div id="brand-chips" class="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <!-- Gerado dinamicamente via app.js -->
+        </div>
+      </div>
+
+      <!-- SEÇÃO 1: GRELHA DE CARROS -->
+      <div id="section-cars" class="p-4 space-y-4">
+        <!-- Aviso de Modo Demonstração (se AC não estiver encontrado) -->
+        <div id="demo-mode-alert" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
+          <span class="text-base">⚠️</span>
+          <div>
+            <strong class="font-bold text-amber-300">Modo de Demonstração Ativo</strong>
+            <p class="mt-0.5 text-slate-300">O diretório do Assetto Corsa não foi detetado no caminho padrão. Podes testar todas as funcionalidades com dados demo ou configurar o teu caminho real na aba <strong>Definições</strong>.</p>
+          </div>
+        </div>
+
+        <!-- Grelha Responsiva de Cartões de Carros -->
+        <div id="cars-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <!-- Carregado via JS -->
+          <div class="col-span-full py-12 text-center text-slate-500 text-sm flex flex-col items-center">
+            <div class="w-8 h-8 border-2 border-brand-red border-t-transparent rounded-full animate-spin mb-3"></div>
+            A carregar garagem do Assetto Corsa...
+          </div>
+        </div>
+      </div>
+
+      <!-- SEÇÃO 2: SELETOR DE PISTAS -->
+      <div id="section-tracks" class="p-4 space-y-3.5 hidden">
+        <div id="tracks-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <!-- Carregado via JS -->
+        </div>
+      </div>
+
+      <!-- SEÇÃO 3: DEFINIÇÃO DE SESSÃO & HORA DO DIA -->
+      <div id="section-session" class="p-4 space-y-5 hidden">
+        <!-- Card Modo de Corrida -->
+        <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="font-racing text-lg font-bold text-white tracking-wide flex items-center gap-2">
+              <span>🎮</span> MODO DE JOGO
+            </h3>
+            <span id="selected-mode-badge" class="text-xs px-2.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40 font-bold uppercase">Treino</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="selectMode('practice', 'Treino Livre')" class="mode-btn active p-3 rounded-xl border border-brand-red bg-brand-red/15 text-left flex flex-col gap-1 transition-all" data-mode="practice">
+              <span class="text-xl">🏁</span>
+              <span class="text-xs font-bold text-white">Treino Livre</span>
+              <span class="text-[10px] text-slate-400">Pista aberta sem pressão</span>
+            </button>
+            <button onclick="selectMode('trackday', 'Track Day')" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-900/60 text-left flex flex-col gap-1 transition-all" data-mode="trackday">
+              <span class="text-xl">🏎️</span>
+              <span class="text-xs font-bold text-white">Track Day</span>
+              <span class="text-[10px] text-slate-400">Tráfego e carros em pista</span>
+            </button>
+            <button onclick="selectMode('drift', 'Drift')" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-900/60 text-left flex flex-col gap-1 transition-all" data-mode="drift">
+              <span class="text-xl">💨</span>
+              <span class="text-xs font-bold text-white">Drift</span>
+              <span class="text-[10px] text-slate-400">Pontuação de derrapagem</span>
+            </button>
+            <button onclick="selectMode('hotlap', 'Hotlap')" class="mode-btn p-3 rounded-xl border border-slate-800 bg-slate-900/60 text-left flex flex-col gap-1 transition-all" data-mode="hotlap">
+              <span class="text-xl">⏱️</span>
+              <span class="text-xs font-bold text-white">Hotlap</span>
+              <span class="text-[10px] text-slate-400">Volta rápida com ghost</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card Hora do Dia com Slider Visual e Céu Dinâmico -->
+        <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3.5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-racing text-lg font-bold text-white tracking-wide flex items-center gap-2">
+              <span id="time-icon">☀️</span> HORA DO DIA
+            </h3>
+            <div class="flex items-center gap-1.5">
+              <span id="time-display" class="font-mono text-base font-bold text-brand-cyan">14:00</span>
+              <span id="time-period-tag" class="text-[10px] font-semibold px-2 py-0.5 rounded bg-brand-cyan/20 text-brand-cyan">Tarde Ensolarada</span>
+            </div>
+          </div>
+
+          <!-- Slider de Horas (08:00 às 23:00) -->
+          <div class="pt-2">
+            <input 
+              type="range" 
+              id="time-slider" 
+              min="8" 
+              max="23" 
+              step="0.5" 
+              value="14" 
+              oninput="handleTimeSlider(this.value)"
+              class="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-cyan"
+            >
+            <div class="flex justify-between text-[10px] text-slate-400 mt-1 font-mono">
+              <span>08:00 (Manhã)</span>
+              <span>13:00 (Meio-dia)</span>
+              <span>18:30 (Pôr do Sol)</span>
+              <span>23:00 (Noite)</span>
+            </div>
+          </div>
+
+          <!-- Botões de atalhos rápidos de hora -->
+          <div class="flex gap-2 pt-1">
+            <button onclick="setTimePreset('09:00', 9)" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-medium text-slate-300 hover:border-slate-600">🌅 09:00</button>
+            <button onclick="setTimePreset('14:00', 14)" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-medium text-slate-300 hover:border-slate-600">☀️ 14:00</button>
+            <button onclick="setTimePreset('18:30', 18.5)" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-medium text-slate-300 hover:border-slate-600">🌆 18:30</button>
+            <button onclick="setTimePreset('22:00', 22)" class="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-medium text-slate-300 hover:border-slate-600">🌙 22:00</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ----------------- TAB 2: SERVIDORES ONLINE ----------------- -->
+    <section id="tab-servers" class="h-full flex flex-col overflow-y-auto no-scrollbar p-4 space-y-4 pb-36 hidden">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="font-racing text-2xl font-black text-white tracking-wide">SERVIDORES FAVORITOS</h2>
+          <p class="text-xs text-slate-400">Acede diretamente a lobbies e servidores online</p>
+        </div>
+        <button onclick="openAddServerModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-white flex items-center gap-1 active:scale-95 transition-transform">
+          <span>+</span> Adicionar
+        </button>
+      </div>
+
+      <!-- Lista de Servidores Favoritos -->
+      <div id="servers-list" class="space-y-3">
+        <!-- Renderizado dinamicamente via JS -->
+      </div>
+    </section>
+
+    <!-- ----------------- TAB 3: DEFINIÇÕES ----------------- -->
+    <section id="tab-settings" class="h-full flex flex-col overflow-y-auto no-scrollbar p-4 space-y-4 pb-36 hidden">
+      <div>
+        <h2 class="font-racing text-2xl font-black text-white tracking-wide">DEFINIÇÕES & CONEXÃO</h2>
+        <p class="text-xs text-slate-400">Configuração de caminhos e ligação com o PC</p>
+      </div>
+
+      <!-- Status do Sistema e IP Local -->
+      <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">ESTADO DA LIGAÇÃO</h3>
+          <span id="badge-keep-awake" class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+            <span>⚡</span> KEEP-AWAKE ATIVO
+          </span>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+            <span class="text-slate-400 block text-[10px]" id="label-ip-title">IP DO SERVIDOR</span>
+            <span id="settings-local-ip" class="font-mono font-bold text-brand-cyan text-sm">A obter...</span>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+            <span class="text-slate-400 block text-[10px]">CARROS / PISTAS</span>
+            <span id="settings-counts" class="font-bold text-white text-sm">-- / --</span>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs">
+          <div>
+            <span class="font-semibold block text-white" id="settings-env-mode">Assetto Corsa no PC</span>
+            <span id="settings-ac-status" class="text-[11px] text-slate-400">A verificar ficheiros...</span>
+          </div>
+          <span id="settings-ac-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400">...</span>
+        </div>
+      </div>
+
+      <!-- Conexão Remota / Vercel Cloud Tunnel -->
+      <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-bold text-brand-cyan uppercase tracking-wider flex items-center gap-1.5">
+            <span>☁️</span> LIGAÇÃO VERCEL ↔️ PC LOCAL
+          </h3>
+          <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-brand-cyan/20 text-brand-cyan">ONLINE 24/7</span>
+        </div>
+        <p class="text-[11px] text-slate-400">Se usares a app hospedada na Vercel, insere o endereço do teu computador (IP local ou túnel Cloudflare) para enviar comandos e carregar carros reais:</p>
+        
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Endereço do PC (IP Local ou Túnel):</label>
+          <input 
+            type="text" 
+            id="input-remote-pc" 
+            placeholder="Ex: http://192.168.1.192:5000 ou https://meu-pc.trycloudflare.com" 
+            class="w-full bg-slate-900 text-xs text-white rounded-xl px-3 py-2.5 border border-slate-800 font-mono focus:border-brand-cyan focus:outline-none"
+          >
+          <span class="text-[10px] text-slate-500 mt-1 block">Deixa em branco se estiveres a aceder diretamente pelo servidor local.</span>
+        </div>
+      </div>
+
+      <!-- Formulário de Caminhos -->
+      <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3.5">
+        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">CAMINHOS NO COMPUTADOR</h3>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Caminho da Pasta do Assetto Corsa:</label>
+          <input 
+            type="text" 
+            id="input-ac-path" 
+            placeholder="C:\Program Files (x86)\Steam\steamapps\common\assettocorsa" 
+            class="w-full bg-slate-900 text-xs text-white rounded-xl px-3 py-2.5 border border-slate-800 font-mono focus:border-brand-red focus:outline-none"
+          >
+          <span class="text-[10px] text-slate-500 mt-1 block">Pasta onde estão localizadas as pastas 'content/cars' e 'content/tracks'.</span>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Caminho do Ficheiro race.ini:</label>
+          <input 
+            type="text" 
+            id="input-race-ini" 
+            placeholder="~/Documents/Assetto Corsa/cfg/race.ini" 
+            class="w-full bg-slate-900 text-xs text-white rounded-xl px-3 py-2.5 border border-slate-800 font-mono focus:border-brand-red focus:outline-none"
+          >
+          <span class="text-[10px] text-slate-500 mt-1 block">Ficheiro INI modificado pela app para carregar a sessão instantaneamente.</span>
+        </div>
+
+        <div class="flex gap-2 pt-2">
+          <button onclick="saveSettings()" class="flex-1 py-2.5 rounded-xl bg-brand-red hover:bg-brand-darkred text-xs font-bold text-white shadow-lg shadow-brand-red/30 active:scale-95 transition-transform flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            GUARDAR DEFINIÇÕES
+          </button>
+          <button onclick="reloadACData()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 active:scale-95 transition-transform">
+            ↻ RECARREGAR
+          </button>
+        </div>
+      </div>
+
+      <!-- Guia iOS PWA (Add to Home Screen) -->
+      <div class="bg-gradient-to-br from-slate-900 to-brand-card p-4 rounded-2xl border border-slate-800 space-y-2 text-xs">
+        <div class="flex items-center gap-2 text-amber-400 font-bold">
+          <span>📲</span> COMO INSTALAR NO IPHONE (ECRÃ TOTAL)
+        </div>
+        <p class="text-slate-300 text-[11px] leading-relaxed">
+          1. No Safari do iPhone, toca no ícone de <strong>Partilhar</strong> (<svg class="w-3.5 h-3.5 inline text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>).<br>
+          2. Rola para baixo e escolhe <strong>"Adicionar ao Ecrã Principal"</strong>.<br>
+          3. Abre o ícone criado para correr como uma <strong>App Nativa sem barras de endereço</strong>!
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= BARRA FIXA FLUTUANTE DE RESUMO & LANÇAR CORRIDA ================= -->
+  <aside id="floating-launch-bar" class="fixed bottom-[68px] left-0 right-0 z-30 px-4 py-2 pointer-events-none">
+    <div class="max-w-md mx-auto glass-nav border border-brand-red/50 p-2.5 rounded-2xl shadow-2xl shadow-black/80 flex items-center justify-between gap-3 pointer-events-auto">
+      
+      <!-- Resumo Seleção Atual -->
+      <div class="flex items-center gap-2.5 min-w-0 flex-1">
+        <div class="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-900 border border-slate-700 flex-none">
+          <img id="summary-car-img" src="" alt="Carro" class="w-full h-full object-cover">
+          <div class="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-center text-white py-0.2 truncate font-mono" id="summary-skin-tag">Skin</div>
+        </div>
+
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] font-bold text-brand-red tracking-wider uppercase" id="summary-mode-tag">Treino</span>
+            <span class="text-[9px] text-slate-400 font-mono" id="summary-time-tag">14:00</span>
+          </div>
+          <h4 id="summary-car-name" class="text-xs font-extrabold text-white truncate leading-tight">Escolha um Carro</h4>
+          <p id="summary-track-name" class="text-[11px] text-slate-300 truncate">Pista: Spa Francorchamps</p>
+        </div>
+      </div>
+
+      <!-- Botão Lançar Grande -->
+      <button 
+        id="btn-launch-race" 
+        onclick="launchRace()" 
+        class="flex-none px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 text-white font-racing font-bold text-sm tracking-wider uppercase pulse-btn glow-red active:scale-95 transition-all flex items-center gap-1.5"
+      >
+        <span>🏎️</span>
+        <span id="launch-btn-text">LANÇAR NO PC</span>
+      </button>
+
+    </div>
+  </aside>
+
+  <!-- ================= GAVETA INFERIOR (BOTTOM SHEET) PARA ESCOLHER PINTURA (SKIN) ================= -->
+  <div id="skin-bottom-sheet-backdrop" onclick="closeSkinModal()" class="fixed inset-0 bg-black/70 z-40 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300"></div>
+  
+  <div id="skin-bottom-sheet" class="fixed inset-x-0 bottom-0 z-50 glass-nav border-t border-brand-border rounded-t-3xl max-h-[85vh] flex flex-col bottom-sheet closed pb-8">
+    
+    <!-- Pega de arrasto superior estilo iOS -->
+    <div class="w-12 h-1.5 bg-slate-700 rounded-full mx-auto my-3"></div>
+
+    <div class="px-5 pb-3 border-b border-brand-border flex items-center justify-between">
+      <div>
+        <span class="text-[10px] font-bold text-brand-red tracking-wider uppercase" id="skin-modal-car-brand">Marca</span>
+        <h3 id="skin-modal-car-name" class="font-racing text-xl font-bold text-white tracking-wide leading-tight">Nome do Carro</h3>
+      </div>
+      <button onclick="closeSkinModal()" class="w-8 h-8 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center hover:bg-slate-700">
+        ✕
+      </button>
+    </div>
+
+    <!-- Foto em Preview ao Vivo Grande da Skin Selecionada -->
+    <div class="px-5 pt-3 pb-2 flex-none">
+      <div class="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-xl">
+        <img id="skin-live-preview" src="" alt="Skin Preview" class="w-full h-full object-cover">
+        
+        <div class="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between p-2 rounded-xl bg-black/60 backdrop-blur-md border border-white/10">
+          <div class="min-w-0">
+            <span class="text-[9px] text-slate-400 block uppercase tracking-wider font-semibold">Pintura Selecionada</span>
+            <span id="skin-live-title" class="text-xs font-bold text-white truncate block">Pintura 00</span>
+          </div>
+          <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-red/30 text-brand-red font-bold">AO VIVO</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lista com Miniaturas das Skins Disponíveis -->
+    <div class="px-5 py-2 flex-1 overflow-y-auto no-scrollbar space-y-2">
+      <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Escolhe a Pintura / Livery:</span>
+      <div id="skins-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
+        <!-- Injetado via JS -->
+      </div>
+    </div>
+
+    <!-- Botão de Confirmação -->
+    <div class="px-5 pt-3">
+      <button onclick="confirmSkinSelection()" class="w-full py-3 rounded-xl bg-brand-red font-racing text-base font-bold text-white tracking-wider uppercase shadow-lg shadow-brand-red/40 active:scale-98 transition-transform">
+        CONFIRMAR PINTURA
+      </button>
+    </div>
+
+  </div>
+
+  <!-- ================= MODAL ADICIONAR SERVIDOR ================= -->
+  <div id="modal-add-server" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-200">
+    <div class="bg-brand-card border border-brand-border rounded-2xl w-full max-w-sm p-4 space-y-3.5 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <h3 class="font-racing text-lg font-bold text-white">ADICIONAR SERVIDOR FAVORITO</h3>
+        <button onclick="closeAddServerModal()" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+
+      <div class="space-y-2 text-xs">
+        <div>
+          <label class="block text-slate-300 mb-1 font-semibold">Nome do Servidor:</label>
+          <input type="text" id="new-srv-name" placeholder="Ex: Nordschleife Trackday" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white">
+        </div>
+        <div>
+          <label class="block text-slate-300 mb-1 font-semibold">IP e Porta (ou Link Content Manager):</label>
+          <input type="text" id="new-srv-ip" placeholder="Ex: 51.89.96.120:9600 ou https://acstuff.ru/..." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono">
+        </div>
+        <div>
+          <label class="block text-slate-300 mb-1 font-semibold">Pista / Descrição (opcional):</label>
+          <input type="text" id="new-srv-track" placeholder="Ex: Nürburgring Nordschleife" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white">
+        </div>
+      </div>
+
+      <div class="flex gap-2 pt-2">
+        <button onclick="saveNewServer()" class="flex-1 py-2 rounded-xl bg-brand-red text-white text-xs font-bold shadow-md">ADICIONAR</button>
+        <button onclick="closeAddServerModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold">CANCELAR</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= BARRA DE NAVEGAÇÃO INFERIOR ESTILO IOS ================= -->
+  <nav class="flex-none z-30 glass-nav border-t border-brand-border/70 pb-[max(8px,env(safe-area-inset-bottom))]">
+    <div class="flex items-center justify-around h-14 max-w-md mx-auto">
+      
+      <!-- Tab 1: Garagem -->
+      <button 
+        id="nav-tab-garage" 
+        onclick="switchTab('tab-garage')" 
+        class="nav-btn flex-1 flex flex-col items-center justify-center gap-1 text-brand-red active:scale-95 transition-transform"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+        </svg>
+        <span class="text-[10px] font-bold tracking-tight">Garagem & Pista</span>
+      </button>
+
+      <!-- Tab 2: Servidores Online -->
+      <button 
+        id="nav-tab-servers" 
+        onclick="switchTab('tab-servers')" 
+        class="nav-btn flex-1 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-slate-200 active:scale-95 transition-transform"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/>
+        </svg>
+        <span class="text-[10px] font-bold tracking-tight">Servidores</span>
+      </button>
+
+      <!-- Tab 3: Definições -->
+      <button 
+        id="nav-tab-settings" 
+        onclick="switchTab('tab-settings')" 
+        class="nav-btn flex-1 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-slate-200 active:scale-95 transition-transform"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <span class="text-[10px] font-bold tracking-tight">Definições</span>
+      </button>
+
+    </div>
+  </nav>
+
+  <!-- Lógica da Aplicação -->
+  <script src="/static/app.js"></script>
+</body>
+</html>
