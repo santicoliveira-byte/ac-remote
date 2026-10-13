@@ -12,6 +12,41 @@ try:
     import psutil
 except ImportError:
     psutil = None
+
+try:
+    import pydirectinput
+    pydirectinput.FAILSAFE = False
+except Exception:
+    pydirectinput = None
+
+try:
+    import keyboard
+except Exception:
+    keyboard = None
+
+def focus_game_window():
+    """Traz a janela do Assetto Corsa para primeiro plano no Windows se visivel."""
+    if sys.platform != 'win32' or IS_VERCEL:
+        return False
+    try:
+        import win32gui
+        target_hwnds = []
+        def enum_cb(hwnd, extra):
+            if win32gui.IsWindowVisible(hwnd):
+                title = win32gui.GetWindowText(hwnd)
+                if "Assetto Corsa" in title or "acs" in title.lower():
+                    extra.append(hwnd)
+        win32gui.EnumWindows(enum_cb, target_hwnds)
+        if target_hwnds:
+            hwnd = target_hwnds[0]
+            win32gui.ShowWindow(hwnd, 9)  # SW_RESTORE
+            win32gui.SetForegroundWindow(hwnd)
+            time.sleep(0.04)
+            return True
+    except Exception:
+        pass
+    return False
+
 from flask import Flask, request, jsonify, render_template, send_file, Response, send_from_directory
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -359,7 +394,8 @@ def get_status():
         "cars_count": cars_count if ac_valid else len(DEMO_CARS),
         "tracks_count": tracks_count if ac_valid else len(DEMO_TRACKS),
         "demo_mode": not ac_valid,
-        "local_ip": "Vercel Cloud" if IS_VERCEL else get_local_ip()
+        "local_ip": "Vercel Cloud" if IS_VERCEL else get_local_ip(),
+        "game_running": is_game_running()
     })
 
 @app.route('/api/config', methods=['GET', 'POST'])
@@ -1127,6 +1163,179 @@ def join_server():
                 "success": False,
                 "message": f"Erro ao invocar Content Manager: {e2}"
             }), 500
+
+@app.route('/api/action', methods=['POST'])
+def trigger_in_game_action():
+    """
+    Controlos em Pista: executa ações dentro do Assetto Corsa e controlos de sistema.
+    Suporta:
+    - drive: Simula clique no volante (Drive) no canto superior esquerdo (48, 48) e prime Enter para sair dos boxes sem rato
+    - teleport_pits: Pressiona ESC para regressar aos boxes / abrir menu de teleport
+    - restart_session: Atalho nativo Ctrl+R para reiniciar a corrida/sessao
+    - camera_f1: F1 (Cockpit / Capô / Perseguição)
+    - camera_f6: F6 (Câmaras de TV / Pista / Espetador)
+    - change_camera: Alterna câmara F1 (ou tecla fornecida)
+    - lights: Tecla L (Ligar/desligar faróis)
+    - wipers: Alt+W (Ligar/desligar limpa-para-brisas no CSP RainFX)
+    - volume_up: Aumenta o volume do Windows (+10%)
+    - volume_down: Baixa o volume do Windows (-10%)
+    - volume_mute: Ativa/desativa Mute no Windows
+    """
+    payload = request.json or {}
+    action = payload.get("action", "").lower().strip()
+
+    if not action:
+        return jsonify({"success": False, "message": "Nenhuma ação especificada."}), 400
+
+    print(f"[AC REMOTE] Ação em pista acionada: {action}")
+
+    # Volume do Windows (global, não precisa de foco na janela do jogo)
+    if action in ['volume_up', 'volume_down', 'volume_mute']:
+        if sys.platform == 'win32':
+            import ctypes
+            if action == 'volume_up':
+                VK_VOLUME_UP = 0xAF
+                for _ in range(5):
+                    ctypes.windll.user32.keybd_event(VK_VOLUME_UP, 0, 0, 0)
+                    ctypes.windll.user32.keybd_event(VK_VOLUME_UP, 0, 2, 0)
+                return jsonify({"success": True, "action": action, "message": "Volume aumentado (+10%)"})
+            elif action == 'volume_down':
+                VK_VOLUME_DOWN = 0xAE
+                for _ in range(5):
+                    ctypes.windll.user32.keybd_event(VK_VOLUME_DOWN, 0, 0, 0)
+                    ctypes.windll.user32.keybd_event(VK_VOLUME_DOWN, 0, 2, 0)
+                return jsonify({"success": True, "action": action, "message": "Volume reduzido (-10%)"})
+            elif action == 'volume_mute':
+                VK_VOLUME_MUTE = 0xAD
+                ctypes.windll.user32.keybd_event(VK_VOLUME_MUTE, 0, 0, 0)
+                ctypes.windll.user32.keybd_event(VK_VOLUME_MUTE, 0, 2, 0)
+                return jsonify({"success": True, "action": action, "message": "Volume silenciado / restaurado (Mute)"})
+        return jsonify({"success": True, "action": action, "message": "Volume simulado (sistema não-Windows)"})
+
+    # Ações dentro do simulador: focar janela do AC
+    focus_game_window()
+
+    try:
+        if action in ['drive', 'iniciar_conducao']:
+            # Simula clique no botão de volante no canto superior esquerdo e Enter
+            if pydirectinput:
+                pydirectinput.click(48, 48)
+                time.sleep(0.06)
+                pydirectinput.press('enter')
+            elif keyboard:
+                keyboard.send('enter')
+            return jsonify({
+                "success": True,
+                "action": action,
+                "message": "Iniciar Condução: clique nos boxes e Enter executados!"
+            })
+
+        elif action in ['teleport_pits', 'pits', 'boxes']:
+            # No AC, a tecla ESC abre o menu de boxes / teleport
+            if pydirectinput:
+                pydirectinput.press('esc')
+            elif keyboard:
+                keyboard.send('esc')
+            return jsonify({
+                "success": True,
+                "action": action,
+                "message": "Voltar aos Boxes / Teleport executado (ESC)!"
+            })
+
+        elif action in ['restart_session', 'restart']:
+            # Ctrl+R no AC reinicia a sessão de corrida imediatamente
+            if pydirectinput:
+                pydirectinput.keyDown('ctrl')
+                time.sleep(0.05)
+                pydirectinput.press('r')
+                time.sleep(0.05)
+                pydirectinput.keyUp('ctrl')
+            elif keyboard:
+                keyboard.send('ctrl+r')
+            return jsonify({
+                "success": True,
+                "action": action,
+                "message": "Sessão reiniciada (Ctrl + R)!"
+            })
+
+        elif action in ['camera_f1', 'cam_f1']:
+            if pydirectinput:
+                pydirectinput.press('f1')
+            elif keyboard:
+                keyboard.send('f1')
+            return jsonify({
+                "success": True,
+                "action": action,
+                "message": "Câmara alterada (F1 - Cockpit / On-board)!"
+            })
+
+        elif action in ['camera_f6', 'cam_f6']:
+            if pydirectinput:
+                pydirectinput.press('f6')
+            elif keyboard:
+                keyboard.send('f6')
+            return jsonify({
+                "success": True,
+                "action": action,
+                "message": "Câmara alterada (F6 - TV / Pista)!"
+            })
+
+        elif action in ['change_camera', 'cam_toggle']:
+            cam_key = payload.get('key', 'f1').lower()
+            if pydirectinput:
+                pydirectinput.press(cam_key)
+            elif keyboard:
+                keyboard.send(cam_key)
+            return jsonify({
+                "success": True,
+                "action": action,
+                "message": f"Câmara alterada ({cam_key.upper()})!"
+            })
+
+        elif action in ['lights', 'farois']:
+            if pydirectinput:
+                pydirectinput.press('l')
+            elif keyboard:
+                keyboard.send('l')
+            return jsonify({
+                "success": True,
+                "action": action,
+                "message": "Faróis alternados (Tecla L)!"
+            })
+
+        elif action in ['wipers', 'limpa_vidros']:
+            # CSP RainFX wiper toggle = Alt + W
+            if pydirectinput:
+                pydirectinput.keyDown('alt')
+                time.sleep(0.05)
+                pydirectinput.press('w')
+                time.sleep(0.05)
+                pydirectinput.keyUp('alt')
+            elif keyboard:
+                keyboard.send('alt+w')
+            return jsonify({
+                "success": True,
+                "action": action,
+                "message": "Limpa-para-brisas alternado (Alt + W)!"
+            })
+
+        elif action in ['esc', 'pause']:
+            if pydirectinput:
+                pydirectinput.press('esc')
+            elif keyboard:
+                keyboard.send('esc')
+            return jsonify({
+                "success": True,
+                "action": action,
+                "message": "Tecla ESC executada!"
+            })
+
+        else:
+            return jsonify({"success": False, "message": f"Ação desconhecida: {action}"}), 400
+
+    except Exception as e:
+        print(f"[ERRO ACTION] {e}")
+        return jsonify({"success": False, "message": f"Erro ao executar ação: {e}"}), 500
 
 
 # ----------------- INICIALIZAÇÃO -----------------

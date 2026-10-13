@@ -33,6 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchTracks();
   fetchServers();
   setupTouchHaptics();
+  // Atualizar periodicamente status da corrida (a cada 4 segundos)
+  setInterval(fetchStatus, 4000);
 });
 
 // Registar Service Worker para instalação PWA
@@ -163,6 +165,34 @@ function updateStatusUI(data) {
     if (acBadge) {
       acBadge.textContent = 'ONLINE';
       acBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+    }
+  }
+
+  // Indicador de corrida ativa no PC / Controlo em Pista
+  const trackPing = document.getElementById('badge-track-live-ping');
+  const trackDot = document.getElementById('badge-track-live-dot');
+  const trackStatusBadge = document.getElementById('track-status-badge');
+  const trackStatusDot = document.getElementById('track-status-dot');
+
+  if (data.game_running) {
+    if (trackPing) trackPing.classList.remove('hidden');
+    if (trackDot) trackDot.classList.remove('hidden');
+    if (trackStatusBadge) {
+      trackStatusBadge.textContent = 'AO VIVO';
+      trackStatusBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+    }
+    if (trackStatusDot) {
+      trackStatusDot.className = 'w-3.5 h-3.5 rounded-full bg-emerald-500 animate-ping';
+    }
+  } else {
+    if (trackPing) trackPing.classList.add('hidden');
+    if (trackDot) trackDot.classList.add('hidden');
+    if (trackStatusBadge) {
+      trackStatusBadge.textContent = 'STANDBY';
+      trackStatusBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700';
+    }
+    if (trackStatusDot) {
+      trackStatusDot.className = 'w-3.5 h-3.5 rounded-full bg-slate-600';
     }
   }
 }
@@ -756,6 +786,11 @@ async function launchRace() {
 
     if (result.success) {
       showToast(result.message || 'Corrida lançada no PC com sucesso!', '🏎️');
+      // Muda automaticamente para a aba "Controlo em Pista"
+      setTimeout(() => {
+        switchTab('tab-track-control');
+        updateTrackControlHeader();
+      }, 500);
     } else {
       showToast(result.message || 'Erro ao lançar corrida', '❌');
     }
@@ -787,6 +822,19 @@ async function killGame() {
     const data = await res.json();
     if (data.success) {
       showToast(data.message || 'Corrida encerrada com sucesso!', '🛑');
+      trackLightsOn = false;
+      trackWipersOn = false;
+      const btnLights = document.getElementById('btn-toggle-lights');
+      if (btnLights) {
+        btnLights.classList.remove('border-yellow-400', 'bg-yellow-500/25');
+      }
+      const btnWipers = document.getElementById('btn-toggle-wipers');
+      if (btnWipers) {
+        btnWipers.classList.remove('border-sky-400', 'bg-sky-500/25');
+      }
+      setTimeout(() => {
+        fetchStatus();
+      }, 400);
     } else {
       showToast(data.message || 'Erro ao fechar o jogo', '⚠️');
     }
@@ -798,25 +846,86 @@ async function killGame() {
   }
 }
 
+// ================= CONTROLO EM PISTA (AÇÕES IN-GAME & VOLUME) =================
+
+let trackLightsOn = false;
+let trackWipersOn = false;
+
+function updateTrackControlHeader() {
+  const carLabel = document.getElementById('track-active-car-label');
+  if (carLabel) {
+    if (state.selectedCar) {
+      const trackTxt = state.selectedTrack ? ` @ ${state.selectedTrack.name}` : '';
+      carLabel.textContent = `${state.selectedCar.name}${trackTxt}`;
+    } else {
+      carLabel.textContent = 'Sessão Ativa no PC';
+    }
+  }
+}
+
+async function sendTrackAction(action, hintMsg = '') {
+  hapticPulse('medium');
+  if (hintMsg) showToast(hintMsg, '🎮');
+
+  // Feedback visual instantâneo para botões de toggle
+  if (action === 'lights') {
+    trackLightsOn = !trackLightsOn;
+    const btn = document.getElementById('btn-toggle-lights');
+    if (btn) {
+      btn.classList.toggle('border-yellow-400', trackLightsOn);
+      btn.classList.toggle('bg-yellow-500/25', trackLightsOn);
+    }
+  } else if (action === 'wipers') {
+    trackWipersOn = !trackWipersOn;
+    const btn = document.getElementById('btn-toggle-wipers');
+    if (btn) {
+      btn.classList.toggle('border-sky-400', trackWipersOn);
+      btn.classList.toggle('bg-sky-500/25', trackWipersOn);
+    }
+  }
+
+  try {
+    const res = await apiFetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'Comando executado!', '✅');
+    } else {
+      showToast(data.message || 'Falha ao executar ação', '⚠️');
+    }
+  } catch (err) {
+    console.error(`Erro ao enviar ação ${action}:`, err);
+    showToast('Falha na comunicação com o PC', '❌');
+  }
+}
+
 // ================= NAVEGAÇÃO DE ABAS =================
 
 function switchTab(tabId) {
   hapticPulse('light');
 
-  // Esconder todas as abas
-  ['tab-garage', 'tab-servers', 'tab-settings'].forEach(id => {
+  // Esconder todas as 4 abas
+  ['tab-garage', 'tab-servers', 'tab-track-control', 'tab-settings'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('hidden', id !== tabId);
   });
 
   // Atualizar botões de navegação
-  ['nav-tab-garage', 'nav-tab-servers', 'nav-tab-settings'].forEach(navId => {
+  ['nav-tab-garage', 'nav-tab-servers', 'nav-tab-track-control', 'nav-tab-settings'].forEach(navId => {
     const btn = document.getElementById(navId);
     if (!btn) return;
     const isTarget = navId === `nav-${tabId}`;
     btn.classList.toggle('text-brand-red', isTarget);
     btn.classList.toggle('text-slate-400', !isTarget);
   });
+
+  // Atualizar cabeçalho da pista se for para a aba de controlo em pista
+  if (tabId === 'tab-track-control') {
+    updateTrackControlHeader();
+  }
 
   // Mostrar/esconder barra flutuante de lançamento (só na aba da garagem)
   const floatingBar = document.getElementById('floating-launch-bar');
