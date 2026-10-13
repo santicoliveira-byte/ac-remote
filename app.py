@@ -884,6 +884,13 @@ NATION_CODE=
 # ----------------- INICIALIZAÇÃO -----------------
 
 if __name__ == '__main__':
+    # Configurar UTF-8 seguro no terminal Windows
+    if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except Exception:
+            pass
+
     # Manter o PC sempre ligado (evita suspensão enquanto a app corre)
     prevent_pc_sleep()
 
@@ -891,16 +898,16 @@ if __name__ == '__main__':
     port = 5000
     
     print("\n" + "="*56)
-    print("  🏎️   A C   R E M O T E   -   A S S E T T O   C O R S A  ")
+    print("      A C   R E M O T E   -   A S S E T T O   C O R S A  ")
     print("="*56)
-    print(f"  Servidor ativo e pronto a comunicar com o teu iPhone!")
-    print(f"  ⚡ MODO KEEP-AWAKE ATIVADO: PC sempre acordado!")
-    print(f"")
-    print(f"  📱 Abre no Safari do teu iPhone:")
+    print("  Servidor ativo e pronto a comunicar com o teu iPhone!")
+    print("  [+] MODO KEEP-AWAKE ATIVADO: PC sempre acordado!")
+    print("")
+    print("  Abre no Safari do teu iPhone:")
     print(f"     👉  http://{local_ip}:{port}")
-    print(f"")
-    print(f"  ☁️ Vercel: Também podes usar via Vercel configurando")
-    print(f"     este IP nas Definições da tua app na Vercel.")
+    print("")
+    print("  Vercel: Tambem podes usar via Vercel configurando")
+    print(f"     este IP nas Definicoes da tua app na Vercel.")
     print("="*56 + "\n")
 
     app.run(host='0.0.0.0', port=port, debug=False)
