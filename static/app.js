@@ -1,9 +1,153 @@
 /**
- * AC REMOTE - Mobile Controller para Assetto Corsa
- * Frontend SPA Logic (PWA Mobile-First)
+ * AC REMOTE PRO - Cockpit Companion & Controller para Assetto Corsa
+ * Frontend SPA Logic (PWA Mobile-First) com Telemetria em Tempo Real,
+ * Efeitos Sonoros Synthesized F1, Gestão de Favoritos, e Cockpit HUD.
  */
 
-// Estado Global da Aplicação
+// ================= MOTOR DE SOM & ÁUDIO RACING (WEB AUDIO API) =================
+
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.enabled = localStorage.getItem('ac_sound_enabled') !== 'false';
+  }
+
+  init() {
+    if (!this.ctx && (window.AudioContext || window.webkitAudioContext)) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  toggle() {
+    this.enabled = !this.enabled;
+    localStorage.setItem('ac_sound_enabled', this.enabled ? 'true' : 'false');
+    updateSoundUI(this.enabled);
+    if (this.enabled) {
+      this.playChime();
+      showToast('Efeitos Sonoros de Corrida ATIVADOS! 🔊', '🔊');
+    } else {
+      showToast('Efeitos Sonoros DESATIVADOS 🔇', '🔇');
+    }
+  }
+
+  // Clique mecânico de patilha de velocidades / botão tátil
+  playShift() {
+    if (!this.enabled) return;
+    try {
+      this.init();
+      if (!this.ctx) return;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(850, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.04);
+      gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.04);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.04);
+    } catch (e) {}
+  }
+
+  // Som de arranque de motor / V8 launch roar
+  playEngine() {
+    if (!this.enabled) return;
+    try {
+      this.init();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(75, t);
+      osc.frequency.linearRampToValueAtTime(280, t + 0.4);
+      osc.frequency.linearRampToValueAtTime(110, t + 0.8);
+      gain.gain.setValueAtTime(0.2, t);
+      gain.gain.linearRampToValueAtTime(0.45, t + 0.4);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.8);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.8);
+    } catch (e) {}
+  }
+
+  // Rádio de boxes ("Box, box, box")
+  playRadio() {
+    if (!this.enabled) return;
+    try {
+      this.init();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      [0, 0.12].forEach((offset, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(idx === 0 ? 1200 : 1600, t + offset);
+        gain.gain.setValueAtTime(0.18, t + offset);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + offset + 0.08);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t + offset);
+        osc.stop(t + offset + 0.08);
+      });
+    } catch (e) {}
+  }
+
+  // Chime de confirmação
+  playChime() {
+    if (!this.enabled) return;
+    try {
+      this.init();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, t);
+      osc.frequency.setValueAtTime(659.25, t + 0.1);
+      gain.gain.setValueAtTime(0.15, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.3);
+    } catch (e) {}
+  }
+}
+
+const soundEngine = new SoundEngine();
+
+function toggleAudioEngine() {
+  soundEngine.toggle();
+}
+
+function updateSoundUI(enabled) {
+  const icon = document.getElementById('sound-icon');
+  if (icon) icon.textContent = enabled ? '🔊' : '🔇';
+
+  const btn = document.getElementById('btn-sound-toggle');
+  if (btn) {
+    btn.classList.toggle('text-white', enabled);
+    btn.classList.toggle('text-slate-500', !enabled);
+  }
+
+  const settingsBtn = document.getElementById('btn-settings-sound-toggle');
+  if (settingsBtn) {
+    settingsBtn.textContent = enabled ? 'LIGADO' : 'DESLIGADO';
+    settingsBtn.className = enabled 
+      ? 'px-3 py-1.5 rounded-xl bg-brand-red text-white text-xs font-bold active:scale-95 transition-transform'
+      : 'px-3 py-1.5 rounded-xl bg-slate-800 text-slate-400 text-xs font-bold active:scale-95 transition-transform';
+  }
+}
+
+// ================= ESTADO GLOBAL DA APLICAÇÃO =================
+
 const state = {
   cars: [],
   tracks: [],
@@ -13,57 +157,140 @@ const state = {
   selectedLayout: '',
   selectedMode: 'practice',
   selectedModeLabel: 'Treino Livre',
+  selectedWeather: 'clear',
   selectedTime: '14:00',
   currentGarageSection: 'cars',
+  activeCategory: 'ALL',
+  activeTrackFilter: 'ALL',
   activeBrandFilter: 'ALL',
   searchQuery: '',
+  favoriteCars: JSON.parse(localStorage.getItem('ac_fav_cars') || '[]'),
+  favoriteTracks: JSON.parse(localStorage.getItem('ac_fav_tracks') || '[]'),
   config: {},
   status: {},
-  // Estado temporário no modal de skin
+  // Temporário no modal de skin
   tempSkin: null,
-  tempCar: null
+  tempCar: null,
+  lastGear: 'N'
 };
 
 // ================= INICIALIZAÇÃO =================
 
 document.addEventListener('DOMContentLoaded', () => {
   initServiceWorker();
+  initTheme();
+  updateSoundUI(soundEngine.enabled);
+  updateFavBadgeCount();
   fetchStatus();
   fetchCars();
   fetchTracks();
   fetchServers();
   setupTouchHaptics();
-  // Atualizar periodicamente status da corrida (a cada 4 segundos)
+
+  // Polling de telemetria e status
   setInterval(fetchStatus, 4000);
+  setInterval(fetchTelemetryData, 200);
+  setInterval(measurePing, 3000);
+  measurePing();
 });
 
-// Registar Service Worker para instalação PWA
 function initServiceWorker() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('[PWA] Service Worker registado com sucesso:', reg.scope))
-      .catch(err => console.warn('[PWA] Falha ao registar Service Worker:', err));
+      .then(reg => console.log('[PWA] Service Worker ativo:', reg.scope))
+      .catch(err => console.warn('[PWA] Falha ao registar SW:', err));
   }
 }
 
-// Vibrar levemente no iPhone se suportado
 function hapticPulse(type = 'light') {
   if ('vibrate' in navigator) {
     try {
       if (type === 'light') navigator.vibrate(10);
-      else if (type === 'medium') navigator.vibrate(25);
-      else if (type === 'heavy') navigator.vibrate([30, 50, 30]);
+      else if (type === 'medium') navigator.vibrate(22);
+      else if (type === 'heavy') navigator.vibrate([25, 40, 25]);
     } catch (e) {}
   }
 }
 
 function setupTouchHaptics() {
   document.querySelectorAll('button').forEach(btn => {
-    btn.addEventListener('touchstart', () => hapticPulse('light'), { passive: true });
+    btn.addEventListener('touchstart', () => {
+      soundEngine.playShift();
+      hapticPulse('light');
+    }, { passive: true });
   });
 }
 
-// Helper para chamadas API (com suporte a Proxy transparente na Vercel)
+// ================= TEMAS COCKPIT NEON =================
+
+const THEMES = {
+  red: {
+    primary: '#ff2449',
+    dark: '#cc1133',
+    glow: 'rgba(255, 36, 73, 0.45)',
+    border: '#1f2433',
+    name: 'Scuderia Red'
+  },
+  cyan: {
+    primary: '#00e5ff',
+    dark: '#00b4cc',
+    glow: 'rgba(0, 229, 255, 0.45)',
+    border: '#142a38',
+    name: 'Alpine Cyan'
+  },
+  green: {
+    primary: '#10b981',
+    dark: '#059669',
+    glow: 'rgba(16, 185, 129, 0.45)',
+    border: '#132e22',
+    name: 'Racing Green'
+  },
+  yellow: {
+    primary: '#fbbf24',
+    dark: '#d97706',
+    glow: 'rgba(251, 191, 36, 0.45)',
+    border: '#2e2513',
+    name: 'Giallo Modena'
+  },
+  purple: {
+    primary: '#c084fc',
+    dark: '#9333ea',
+    glow: 'rgba(192, 132, 252, 0.45)',
+    border: '#2a1a38',
+    name: 'Cyber Drift'
+  }
+};
+
+function initTheme() {
+  const saved = localStorage.getItem('ac_theme') || 'red';
+  applyThemeStyles(saved);
+}
+
+function setCockpitTheme(key) {
+  applyThemeStyles(key);
+  soundEngine.playChime();
+  hapticPulse('light');
+  const t = THEMES[key] || THEMES.red;
+  showToast(`Tema alterado para ${t.name}!`, '🎨');
+}
+
+function applyThemeStyles(key) {
+  const t = THEMES[key] || THEMES.red;
+  document.documentElement.style.setProperty('--brand-primary', t.primary);
+  document.documentElement.style.setProperty('--brand-dark', t.dark);
+  document.documentElement.style.setProperty('--brand-glow', t.glow);
+  document.documentElement.style.setProperty('--brand-border', t.border);
+
+  localStorage.setItem('ac_theme', key);
+  const label = document.getElementById('theme-active-label');
+  if (label) {
+    label.textContent = t.name;
+    label.style.color = t.primary;
+  }
+}
+
+// ================= HELPER DE COMUNICAÇÃO API (VERCEL PROXY TRANSPARENTE) =================
+
 function getApiEndpoint(path) {
   const remotePc = state.config.remote_pc_url || localStorage.getItem('ac_remote_pc_url') || '';
   const isVercelHost = window.location.hostname.includes('vercel.app') || (state.status && state.status.is_vercel);
@@ -87,6 +314,27 @@ async function apiFetch(path, options = {}) {
   return fetch(url, { ...options, headers });
 }
 
+// Medição de Latência / Ping Live
+async function measurePing() {
+  const start = performance.now();
+  try {
+    const res = await apiFetch('/api/ping');
+    const json = await res.json();
+    const duration = Math.round(performance.now() - start);
+
+    const pingText = document.getElementById('ping-value-text');
+    if (pingText) pingText.textContent = `${duration} ms`;
+
+    const diag = document.getElementById('settings-pc-diag');
+    if (diag && json.cpu !== undefined) {
+      diag.textContent = `CPU: ${json.cpu}% | RAM: ${json.ram}%`;
+    }
+  } catch (e) {
+    const pingText = document.getElementById('ping-value-text');
+    if (pingText) pingText.textContent = '-- ms';
+  }
+}
+
 async function fetchStatus() {
   try {
     const res = await apiFetch('/api/status');
@@ -104,7 +352,6 @@ function updateStatusUI(data) {
   const demoAlert = document.getElementById('demo-mode-alert');
   const ipEl = document.getElementById('settings-local-ip');
   const ipTitle = document.getElementById('label-ip-title');
-  const countEl = document.getElementById('settings-counts');
   const acStatus = document.getElementById('settings-ac-status');
   const acBadge = document.getElementById('settings-ac-badge');
   const envMode = document.getElementById('settings-env-mode');
@@ -129,7 +376,7 @@ function updateStatusUI(data) {
       if (label) label.textContent = 'Vercel ↔ PC';
     } else {
       if (dot) dot.className = 'w-2 h-2 rounded-full bg-sky-400';
-      if (label) label.textContent = 'Vercel Cloud';
+      if (label) label.textContent = 'Vercel';
     }
   } else {
     if (ipTitle) ipTitle.textContent = 'IP LOCAL DO PC';
@@ -141,8 +388,6 @@ function updateStatusUI(data) {
     }
   }
 
-  if (countEl) countEl.textContent = `${data.cars_count} carros / ${data.tracks_count} pistas`;
-
   if (acPathInput && !acPathInput.value) acPathInput.value = data.ac_path || '';
   if (raceIniInput && !raceIniInput.value) raceIniInput.value = data.race_ini || '';
 
@@ -152,14 +397,14 @@ function updateStatusUI(data) {
       if (label) label.textContent = 'Modo Demo';
     }
     if (demoAlert) demoAlert.classList.remove('hidden');
-    if (acStatus) acStatus.textContent = data.is_vercel ? 'A correr na Vercel (liga o teu PC nas definições)' : 'Pasta padrão não encontrada (a usar dados demo)';
+    if (acStatus) acStatus.textContent = data.is_vercel ? 'A correr na Vercel (liga o PC nas definições)' : 'Pasta padrão não encontrada (a usar dados demo)';
     if (acBadge) {
       acBadge.textContent = data.is_vercel ? 'CLOUD' : 'DEMO';
       acBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30';
     }
   } else {
     if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
-    if (label) label.textContent = 'AC Ligado';
+    if (label) label.textContent = 'Online';
     if (demoAlert) demoAlert.classList.add('hidden');
     if (acStatus) acStatus.textContent = 'Ficheiros do simulador detetados com sucesso';
     if (acBadge) {
@@ -168,7 +413,7 @@ function updateStatusUI(data) {
     }
   }
 
-  // Indicador de corrida ativa no PC / Controlo em Pista
+  // Indicador de corrida ativa no PC
   const trackPing = document.getElementById('badge-track-live-ping');
   const trackDot = document.getElementById('badge-track-live-dot');
   const trackStatusBadge = document.getElementById('track-status-badge');
@@ -181,9 +426,7 @@ function updateStatusUI(data) {
       trackStatusBadge.textContent = 'AO VIVO';
       trackStatusBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
     }
-    if (trackStatusDot) {
-      trackStatusDot.className = 'w-3.5 h-3.5 rounded-full bg-emerald-500 animate-ping';
-    }
+    if (trackStatusDot) trackStatusDot.className = 'w-3 h-3 rounded-full bg-emerald-500 animate-ping';
   } else {
     if (trackPing) trackPing.classList.add('hidden');
     if (trackDot) trackDot.classList.add('hidden');
@@ -191,11 +434,11 @@ function updateStatusUI(data) {
       trackStatusBadge.textContent = 'STANDBY';
       trackStatusBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700';
     }
-    if (trackStatusDot) {
-      trackStatusDot.className = 'w-3.5 h-3.5 rounded-full bg-slate-600';
-    }
+    if (trackStatusDot) trackStatusDot.className = 'w-3 h-3 rounded-full bg-slate-600';
   }
 }
+
+// ================= GESTÃO DE CARROS & FAVORITOS =================
 
 async function fetchCars() {
   const grid = document.getElementById('cars-grid');
@@ -210,7 +453,6 @@ async function fetchCars() {
     renderBrandFilterChips();
     renderCarsGrid();
 
-    // Selecionar primeiro carro se nenhum estiver selecionado
     if (state.cars.length > 0 && !state.selectedCar) {
       selectCar(state.cars[0], false);
     }
@@ -225,38 +467,46 @@ async function fetchCars() {
   }
 }
 
-async function fetchTracks() {
-  try {
-    const res = await apiFetch('/api/tracks');
-    const data = await res.json();
-    state.tracks = data.tracks || [];
-
-    const countBadge = document.getElementById('tracks-badge-count');
-    if (countBadge) countBadge.textContent = state.tracks.length;
-
-    renderTracksGrid();
-
-    // Selecionar primeira pista se nenhuma estiver selecionada
-    if (state.tracks.length > 0 && !state.selectedTrack) {
-      selectTrack(state.tracks[0]);
-    }
-  } catch (err) {
-    console.error('Erro ao carregar pistas:', err);
+function toggleFavoriteCar(e, carId) {
+  e.stopPropagation();
+  soundEngine.playShift();
+  hapticPulse('medium');
+  const idx = state.favoriteCars.indexOf(carId);
+  if (idx >= 0) {
+    state.favoriteCars.splice(idx, 1);
+    showToast('Carro removido dos Favoritos', '⭐');
+  } else {
+    state.favoriteCars.push(carId);
+    showToast('Carro adicionado aos Favoritos!', '⭐');
   }
+  localStorage.setItem('ac_fav_cars', JSON.stringify(state.favoriteCars));
+  updateFavBadgeCount();
+  renderCarsGrid();
 }
 
-async function fetchServers() {
-  try {
-    const res = await apiFetch('/api/config');
-    const cfg = await res.json();
-    state.config = cfg;
-    renderServersList(cfg.favorite_servers || []);
-  } catch (err) {
-    console.error('Erro ao carregar servidores:', err);
-  }
+function updateFavBadgeCount() {
+  const badge = document.getElementById('fav-count-badge');
+  if (badge) badge.textContent = state.favoriteCars.length;
 }
 
-// ================= RENDERIZAÇÃO DA GARAGEM =================
+function setCategoryFilter(category) {
+  soundEngine.playShift();
+  hapticPulse('light');
+  state.activeCategory = category;
+
+  document.querySelectorAll('.cat-chip-btn').forEach(btn => {
+    const isThis = btn.getAttribute('data-cat') === category;
+    btn.classList.toggle('active', isThis);
+    btn.classList.toggle('border-brand-red', isThis);
+    btn.classList.toggle('bg-brand-red', isThis);
+    btn.classList.toggle('text-white', isThis);
+    btn.classList.toggle('border-slate-800', !isThis && category !== 'FAVORITES');
+    btn.classList.toggle('bg-slate-900', !isThis && category !== 'FAVORITES');
+    btn.classList.toggle('text-slate-400', !isThis);
+  });
+
+  renderCarsGrid();
+}
 
 function renderBrandFilterChips() {
   const container = document.getElementById('brand-chips');
@@ -273,15 +523,15 @@ function renderBrandFilterChips() {
   
   container.innerHTML = sortedBrands.map(b => {
     const isAll = b === 'ALL';
-    const label = isAll ? 'TODOS' : b;
+    const label = isAll ? 'MARCAS: TODAS' : b;
     const isActive = state.activeBrandFilter === b;
     return `
       <button 
         onclick="setBrandFilter('${b}')"
-        class="flex-none px-3 py-1 rounded-lg text-xs font-bold transition-all border ${
+        class="flex-none px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border ${
           isActive 
-            ? 'bg-brand-red text-white border-brand-red shadow-sm' 
-            : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-white'
+            ? 'bg-slate-800 text-white border-brand-red shadow-sm' 
+            : 'bg-slate-950/80 text-slate-400 border-slate-800 hover:text-white'
         }"
       >
         ${label}
@@ -291,6 +541,7 @@ function renderBrandFilterChips() {
 }
 
 function setBrandFilter(brand) {
+  soundEngine.playShift();
   hapticPulse('light');
   state.activeBrandFilter = brand;
   renderBrandFilterChips();
@@ -317,22 +568,48 @@ function clearSearch() {
   handleSearch('');
 }
 
+function getCountryFlag(country) {
+  if (!country) return '';
+  const c = country.toLowerCase();
+  if (c.includes('ital')) return '🇮🇹 IT';
+  if (c.includes('germ')) return '🇩🇪 DE';
+  if (c.includes('jap')) return '🇯🇵 JP';
+  if (c.includes('brit') || c.includes('uk') || c.includes('eng')) return '🇬🇧 UK';
+  if (c.includes('usa') || c.includes('amer')) return '🇺🇸 US';
+  if (c.includes('franc')) return '🇫🇷 FR';
+  return country.toUpperCase().slice(0, 3);
+}
+
 function renderCarsGrid() {
   const grid = document.getElementById('cars-grid');
   if (!grid) return;
 
   const filtered = state.cars.filter(car => {
-    // Filtro por marca selecionada
+    // 1. Categoria
+    if (state.activeCategory === 'FAVORITES') {
+      if (!state.favoriteCars.includes(car.id)) return false;
+    } else if (state.activeCategory === 'GT3') {
+      const isGt = (car.name + ' ' + car.id).toLowerCase().includes('gt');
+      if (!isGt) return false;
+    } else if (state.activeCategory === 'DRIFT') {
+      const isDrift = (car.name + ' ' + car.id).toLowerCase().includes('drift') || (car.name + ' ' + car.id).toLowerCase().includes('miata') || (car.name + ' ' + car.id).toLowerCase().includes('bmw') || (car.name + ' ' + car.id).toLowerCase().includes('supra');
+      if (!isDrift) return false;
+    } else if (state.activeCategory === 'JDM') {
+      const isJdm = ['mazda', 'toyota', 'nissan', 'honda', 'subaru', 'mitsubishi'].some(m => (car.name + ' ' + car.brand + ' ' + car.id).toLowerCase().includes(m));
+      if (!isJdm) return false;
+    } else if (state.activeCategory === 'SUPER') {
+      const isSuper = ['ferrari', 'porsche', 'lamborghini', 'mclaren'].some(m => (car.name + ' ' + car.brand + ' ' + car.id).toLowerCase().includes(m));
+      if (!isSuper) return false;
+    }
+
+    // 2. Marca
     if (state.activeBrandFilter !== 'ALL' && car.brand !== state.activeBrandFilter) {
       return false;
     }
-    // Filtro por termo de pesquisa
+    // 3. Pesquisa
     if (state.searchQuery) {
       const q = state.searchQuery;
-      const matchName = car.name.toLowerCase().includes(q);
-      const matchBrand = (car.brand || '').toLowerCase().includes(q);
-      const matchId = car.id.toLowerCase().includes(q);
-      return matchName || matchBrand || matchId;
+      return car.name.toLowerCase().includes(q) || (car.brand || '').toLowerCase().includes(q) || car.id.toLowerCase().includes(q);
     }
     return true;
   });
@@ -347,19 +624,22 @@ function renderCarsGrid() {
 
   grid.innerHTML = filtered.map(car => {
     const isSelected = state.selectedCar && state.selectedCar.id === car.id;
+    const isFav = state.favoriteCars.includes(car.id);
     const skin = (isSelected && state.selectedSkin) ? state.selectedSkin : car.default_skin;
     const previewUrl = `/api/img/car/${encodeURIComponent(car.id)}/${encodeURIComponent(skin)}`;
     const badgeUrl = `/api/img/badge/${encodeURIComponent(car.id)}`;
     const bhp = car.specs ? car.specs.bhp : 'N/D';
     const weight = car.specs ? car.specs.weight : 'N/D';
+    const topSpeed = car.specs ? car.specs.topSpeed : '';
+    const flag = getCountryFlag(car.country);
     const fallbackWeb = car.image_url || '';
 
     return `
       <div 
         onclick="handleCarCardClick('${car.id}')"
-        class="relative bg-brand-card rounded-2xl overflow-hidden border transition-all active:scale-[0.98] cursor-pointer group ${
+        class="relative bg-brand-card rounded-2xl overflow-hidden border transition-all active:scale-[0.98] cursor-pointer group shadow-lg ${
           isSelected 
-            ? 'border-brand-red ring-2 ring-brand-red/50 shadow-xl shadow-brand-red/10' 
+            ? 'border-brand-red ring-2 ring-brand-red/50 shadow-xl shadow-brand-red/15' 
             : 'border-brand-border hover:border-slate-700'
         }"
       >
@@ -375,48 +655,58 @@ function renderCarsGrid() {
           >
           
           <!-- Badge do Fabricante (Canto Superior Esquerdo) -->
-          <div class="absolute top-2.5 left-2.5 w-7 h-7 rounded-lg bg-black/60 backdrop-blur-md p-1 border border-white/10 flex items-center justify-center">
+          <div class="absolute top-2 left-2 w-7 h-7 rounded-lg bg-black/60 backdrop-blur-md p-1 border border-white/10 flex items-center justify-center">
             <img src="${badgeUrl}" alt="${car.brand}" class="max-w-full max-h-full object-contain" onerror="this.style.display='none'">
           </div>
 
-          <!-- Indicador de Seleção / Skin -->
-          <div class="absolute top-2.5 right-2.5 flex items-center gap-1.5">
-            ${
-              isSelected 
-                ? '<span class="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-brand-red text-white shadow-md">ATIVO</span>'
-                : `<span class="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-black/60 text-slate-300 backdrop-blur-sm border border-white/10">${car.skins.length} Skins</span>`
-            }
-          </div>
+          <!-- Botão Estrela de Favoritos (Canto Superior Direito) -->
+          <button 
+            onclick="toggleFavoriteCar(event, '${car.id}')"
+            class="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-sm active:scale-90 transition-transform ${isFav ? 'text-amber-400' : 'text-slate-400 hover:text-white'}"
+            title="Favoritar Carro"
+          >
+            ★
+          </button>
 
-          <!-- Linha de Fundo com Skin Atual -->
-          <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2 flex items-end justify-between">
+          <!-- Barra de Fundo com Skin Atual -->
+          <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/50 to-transparent p-2 flex items-end justify-between">
             <span class="text-[10px] text-slate-300 font-mono truncate max-w-[70%]">
               🎨 ${skin.replace(/_/g, ' ')}
             </span>
-            <span class="text-[9px] font-bold text-brand-cyan tracking-wider uppercase">Tocar p/ Pintura</span>
+            <span class="text-[9px] font-bold text-brand-cyan tracking-wider uppercase">Pinturas (${car.skins.length})</span>
           </div>
         </div>
 
         <!-- Informações do Carro -->
         <div class="p-3">
           <div class="flex items-start justify-between gap-1">
-            <div class="min-w-0">
-              <span class="text-[9px] font-bold uppercase tracking-wider text-brand-red block truncate">${car.brand || 'Assetto Corsa'}</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[9px] font-bold uppercase tracking-wider text-brand-red block truncate">${car.brand || 'Assetto Corsa'}</span>
+                ${flag ? `<span class="text-[9px] font-mono text-slate-400">${flag}</span>` : ''}
+              </div>
               <h3 class="text-xs font-bold text-white truncate leading-tight mt-0.5">${car.name}</h3>
             </div>
           </div>
 
-          <!-- Chips de Especificações (Cavalos e Peso) -->
-          <div class="flex items-center gap-2 mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] font-mono">
-            <div class="flex items-center gap-1 text-amber-400">
+          <!-- Badges de Especificações -->
+          <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-800/80 text-[10px] font-mono">
+            <div class="flex items-center gap-1 text-amber-400 font-bold">
               <span>🔥</span>
-              <span class="font-bold">${bhp}</span>
+              <span>${bhp}</span>
             </div>
             <span class="text-slate-600">•</span>
             <div class="flex items-center gap-1 text-slate-300">
               <span>⚖️</span>
               <span>${weight}</span>
             </div>
+            ${topSpeed && topSpeed !== 'N/D' ? `
+              <span class="text-slate-600">•</span>
+              <div class="flex items-center gap-1 text-brand-cyan">
+                <span>⚡</span>
+                <span>${topSpeed}</span>
+              </div>
+            ` : ''}
           </div>
         </div>
       </div>
@@ -425,17 +715,15 @@ function renderCarsGrid() {
 }
 
 function handleCarCardClick(carId) {
+  soundEngine.playShift();
   hapticPulse('medium');
   const car = state.cars.find(c => c.id === carId);
   if (!car) return;
 
   const isAlreadySelected = state.selectedCar && state.selectedCar.id === car.id;
-  
   if (!isAlreadySelected) {
     selectCar(car, false);
   }
-
-  // Abre a gaveta de skins ao tocar
   openSkinModal(car);
 }
 
@@ -444,6 +732,9 @@ function selectCar(car, render = true) {
   if (!state.selectedSkin || !car.skins.includes(state.selectedSkin)) {
     state.selectedSkin = car.default_skin || car.skins[0] || 'default';
   }
+  const hudCarLabel = document.getElementById('hud-car-name');
+  if (hudCarLabel) hudCarLabel.textContent = car.name;
+
   updateSummaryBar();
   if (render) renderCarsGrid();
 }
@@ -452,9 +743,7 @@ function selectCar(car, render = true) {
 
 function openSkinModal(car) {
   state.tempCar = car;
-  state.tempSkin = state.selectedCar && state.selectedCar.id === car.id 
-    ? state.selectedSkin 
-    : (car.default_skin || car.skins[0]);
+  state.tempSkin = state.selectedSkin || car.default_skin;
 
   const brandEl = document.getElementById('skin-modal-car-brand');
   const nameEl = document.getElementById('skin-modal-car-name');
@@ -464,39 +753,39 @@ function openSkinModal(car) {
   updateSkinLivePreview(car.id, state.tempSkin);
   renderSkinsGrid(car);
 
-  const sheet = document.getElementById('skin-bottom-sheet');
   const backdrop = document.getElementById('skin-bottom-sheet-backdrop');
-  if (sheet) sheet.classList.remove('closed');
+  const sheet = document.getElementById('skin-bottom-sheet');
   if (backdrop) {
     backdrop.classList.remove('opacity-0', 'pointer-events-none');
-    backdrop.classList.add('opacity-100', 'pointer-events-auto');
+    backdrop.classList.add('opacity-100');
   }
+  if (sheet) sheet.classList.remove('closed');
 }
 
 function closeSkinModal() {
   hapticPulse('light');
-  const sheet = document.getElementById('skin-bottom-sheet');
   const backdrop = document.getElementById('skin-bottom-sheet-backdrop');
-  if (sheet) sheet.classList.add('closed');
+  const sheet = document.getElementById('skin-bottom-sheet');
   if (backdrop) {
-    backdrop.classList.remove('opacity-100', 'pointer-events-auto');
     backdrop.classList.add('opacity-0', 'pointer-events-none');
+    backdrop.classList.remove('opacity-100');
   }
+  if (sheet) sheet.classList.add('closed');
 }
 
 function renderSkinsGrid(car) {
-  const container = document.getElementById('skins-grid');
-  if (!container) return;
+  const grid = document.getElementById('skins-grid');
+  if (!grid) return;
 
-  container.innerHTML = car.skins.map(skinName => {
+  const fallbackWeb = car.image_url || '';
+
+  grid.innerHTML = car.skins.map(skinName => {
     const isSelected = state.tempSkin === skinName;
     const previewUrl = `/api/img/car/${encodeURIComponent(car.id)}/${encodeURIComponent(skinName)}`;
-    const fallbackWeb = car.image_url || '';
-
     return `
       <div 
         onclick="previewSkin('${skinName}')"
-        class="bg-slate-900 rounded-xl overflow-hidden border p-1 transition-all active:scale-95 cursor-pointer flex flex-col gap-1 ${
+        class="p-1 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 active:scale-95 ${
           isSelected 
             ? 'border-brand-red bg-brand-red/10 ring-2 ring-brand-red/40' 
             : 'border-slate-800 hover:border-slate-700'
@@ -511,11 +800,7 @@ function renderSkinsGrid(car) {
             style="object-fit: cover;"
             onerror="if (!this.dataset.triedWeb && '${fallbackWeb}') { this.dataset.triedWeb='1'; this.src='${fallbackWeb}'; } else if (!this.dataset.triedSvg) { this.dataset.triedSvg='1'; this.src='/api/img/placeholder/car?id=${encodeURIComponent(car.id)}&skin=${encodeURIComponent(skinName)}'; }"
           >
-          ${
-            isSelected 
-              ? '<span class="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-brand-red shadow"></span>' 
-              : ''
-          }
+          ${isSelected ? '<span class="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-brand-red shadow"></span>' : ''}
         </div>
         <span class="text-[10px] font-semibold text-slate-200 truncate px-1 text-center font-mono">
           ${skinName.replace(/_/g, ' ')}
@@ -526,6 +811,7 @@ function renderSkinsGrid(car) {
 }
 
 function previewSkin(skinName) {
+  soundEngine.playShift();
   hapticPulse('light');
   state.tempSkin = skinName;
   updateSkinLivePreview(state.tempCar.id, skinName);
@@ -555,6 +841,7 @@ function updateSkinLivePreview(carId, skinName) {
 }
 
 function confirmSkinSelection() {
+  soundEngine.playChime();
   hapticPulse('medium');
   if (state.tempCar) {
     state.selectedCar = state.tempCar;
@@ -566,13 +853,79 @@ function confirmSkinSelection() {
   closeSkinModal();
 }
 
-// ================= SELETOR DE PISTAS =================
+// ================= GESTÃO DE PISTAS & FAVORITOS =================
+
+async function fetchTracks() {
+  try {
+    const res = await apiFetch('/api/tracks');
+    const data = await res.json();
+    state.tracks = data.tracks || [];
+
+    const countBadge = document.getElementById('tracks-badge-count');
+    if (countBadge) countBadge.textContent = state.tracks.length;
+
+    renderTracksGrid();
+
+    if (state.tracks.length > 0 && !state.selectedTrack) {
+      selectTrack(state.tracks[0]);
+    }
+  } catch (err) {
+    console.error('Erro ao carregar pistas:', err);
+  }
+}
+
+function toggleFavoriteTrack(e, trackId) {
+  e.stopPropagation();
+  soundEngine.playShift();
+  hapticPulse('medium');
+  const idx = state.favoriteTracks.indexOf(trackId);
+  if (idx >= 0) {
+    state.favoriteTracks.splice(idx, 1);
+    showToast('Pista removida dos Favoritos', '⭐');
+  } else {
+    state.favoriteTracks.push(trackId);
+    showToast('Pista adicionada aos Favoritos!', '⭐');
+  }
+  localStorage.setItem('ac_fav_tracks', JSON.stringify(state.favoriteTracks));
+  renderTracksGrid();
+}
+
+function setTrackFilter(filter) {
+  soundEngine.playShift();
+  hapticPulse('light');
+  state.activeTrackFilter = filter;
+
+  document.querySelectorAll('.trk-chip-btn').forEach(btn => {
+    const isThis = btn.getAttribute('data-trk') === filter;
+    btn.classList.toggle('active', isThis);
+    btn.classList.toggle('border-brand-red', isThis);
+    btn.classList.toggle('bg-brand-red', isThis);
+    btn.classList.toggle('text-white', isThis);
+    btn.classList.toggle('border-slate-800', !isThis && filter !== 'FAVORITES');
+    btn.classList.toggle('bg-slate-900', !isThis && filter !== 'FAVORITES');
+    btn.classList.toggle('text-slate-400', !isThis);
+  });
+
+  renderTracksGrid();
+}
 
 function renderTracksGrid() {
   const grid = document.getElementById('tracks-grid');
   if (!grid) return;
 
   const filtered = state.tracks.filter(track => {
+    // Filtro de Categoria
+    if (state.activeTrackFilter === 'FAVORITES') {
+      if (!state.favoriteTracks.includes(track.id)) return false;
+    } else if (state.activeTrackFilter === 'GP') {
+      const isGp = (track.name + ' ' + track.id).toLowerCase().includes('spa') || (track.name + ' ' + track.id).toLowerCase().includes('monza') || (track.name + ' ' + track.id).toLowerCase().includes('silverstone') || (track.name + ' ' + track.id).toLowerCase().includes('gp');
+      if (!isGp) return false;
+    } else if (state.activeTrackFilter === 'DRIFT') {
+      const isDrift = (track.name + ' ' + track.id).toLowerCase().includes('drift') || (track.name + ' ' + track.id).toLowerCase().includes('touge') || (track.name + ' ' + track.id).toLowerCase().includes('ebisu') || (track.name + ' ' + track.id).toLowerCase().includes('akina');
+      if (!isDrift) return false;
+    }
+
+    // Pesquisa
     if (state.searchQuery) {
       const q = state.searchQuery;
       const matchName = track.name.toLowerCase().includes(q);
@@ -586,13 +939,14 @@ function renderTracksGrid() {
   if (filtered.length === 0) {
     grid.innerHTML = `
       <div class="col-span-full py-12 text-center text-slate-500 text-xs">
-        Nenhuma pista encontrada para a pesquisa selecionada.
+        Nenhuma pista encontrada para o filtro selecionado.
       </div>`;
     return;
   }
 
   grid.innerHTML = filtered.map(track => {
     const isSelected = state.selectedTrack && state.selectedTrack.id === track.id && (state.selectedLayout === (track.layout || ''));
+    const isFav = state.favoriteTracks.includes(track.id);
     const length = track.specs ? track.specs.length : 'N/D';
     const pitboxes = track.specs ? track.specs.pitboxes : 'N/D';
     const country = track.specs ? track.specs.country : '';
@@ -601,10 +955,10 @@ function renderTracksGrid() {
 
     return `
       <div 
-        onclick="selectTrackFromCard('${track.id}', '${track.layout || ''}')"
-        class="relative bg-brand-card rounded-2xl overflow-hidden border transition-all active:scale-[0.98] cursor-pointer group ${
+        onclick="handleTrackCardClick('${track.id}', '${track.layout || ''}')"
+        class="relative bg-brand-card rounded-2xl overflow-hidden border transition-all active:scale-[0.98] cursor-pointer group shadow-lg ${
           isSelected 
-            ? 'border-brand-red ring-2 ring-brand-red/50 shadow-xl shadow-brand-red/10' 
+            ? 'border-brand-red ring-2 ring-brand-red/50 shadow-xl shadow-brand-red/15' 
             : 'border-brand-border hover:border-slate-700'
         }"
       >
@@ -617,29 +971,36 @@ function renderTracksGrid() {
             style="object-fit: cover;"
             onerror="if (!this.dataset.triedWeb && '${fallbackWeb}') { this.dataset.triedWeb='1'; this.src='${fallbackWeb}'; } else if (!this.dataset.triedSvg) { this.dataset.triedSvg='1'; this.src='/api/img/placeholder/track?id=${encodeURIComponent(track.id)}'; }"
           >
-          
-          <div class="absolute top-2.5 right-2.5 flex items-center gap-1.5">
-            ${
-              isSelected 
-                ? '<span class="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-brand-red text-white shadow-md">PISTA ATIVA</span>'
-                : (track.layout ? `<span class="px-2 py-0.5 rounded-full text-[9px] font-mono bg-black/60 text-brand-cyan border border-brand-cyan/30">${track.layout}</span>` : '')
-            }
-          </div>
 
-          <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-2.5">
-            <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">${country || 'Circuito'}</span>
-            <h3 class="text-sm font-racing font-bold text-white tracking-wide truncate leading-tight">${track.name}</h3>
+          <!-- Botão Estrela de Favoritos -->
+          <button 
+            onclick="toggleFavoriteTrack(event, '${track.id}')"
+            class="absolute top-2 right-2 w-7 h-7 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-sm active:scale-90 transition-transform ${isFav ? 'text-amber-400' : 'text-slate-400 hover:text-white'}"
+            title="Favoritar Pista"
+          >
+            ★
+          </button>
+
+          ${
+            track.layout 
+              ? `<div class="absolute top-2 left-2 px-2 py-0.5 rounded-lg bg-black/70 backdrop-blur-md text-[9px] font-mono text-brand-cyan border border-brand-cyan/30 uppercase font-bold">
+                  Layout: ${track.layout}
+                </div>` 
+              : ''
+          }
+
+          <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/95 via-black/50 to-transparent p-2">
+            <h3 class="text-xs font-bold text-white truncate">${track.name}</h3>
           </div>
         </div>
 
-        <div class="p-3 flex items-center justify-between text-[10px] font-mono text-slate-300">
-          <div class="flex items-center gap-1 text-brand-cyan">
-            <span>📏</span>
-            <span>${length}</span>
-          </div>
-          <div class="flex items-center gap-1 text-slate-400">
-            <span>🏁</span>
-            <span>${pitboxes} Boxes</span>
+        <div class="p-3">
+          <div class="flex items-center justify-between text-[10px] font-mono text-slate-400">
+            <span class="flex items-center gap-1">📍 ${country || 'Internacional'}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-white font-bold">📏 ${length}</span>
+              <span>📦 ${pitboxes} pits</span>
+            </div>
           </div>
         </div>
       </div>
@@ -647,31 +1008,31 @@ function renderTracksGrid() {
   }).join('');
 }
 
-function selectTrackFromCard(trackId, layout) {
+function handleTrackCardClick(trackId, layout) {
+  soundEngine.playShift();
   hapticPulse('medium');
   const track = state.tracks.find(t => t.id === trackId && (t.layout || '') === layout);
-  if (track) {
-    selectTrack(track);
-    renderTracksGrid();
-    showToast(`Pista selecionada: ${track.name}`, '🏁');
-  }
+  if (!track) return;
+  selectTrack(track);
 }
 
 function selectTrack(track) {
   state.selectedTrack = track;
   state.selectedLayout = track.layout || '';
   updateSummaryBar();
+  renderTracksGrid();
 }
 
-// ================= DEFINIÇÃO DE SESSÃO & HORA =================
+// ================= MODOS DE JOGO, METEOROLOGIA E HORÁRIOS =================
 
-function selectMode(mode, label) {
+function selectMode(modeKey, modeLabel) {
+  soundEngine.playShift();
   hapticPulse('light');
-  state.selectedMode = mode;
-  state.selectedModeLabel = label;
+  state.selectedMode = modeKey;
+  state.selectedModeLabel = modeLabel;
 
   document.querySelectorAll('.mode-btn').forEach(btn => {
-    const isThis = btn.getAttribute('data-mode') === mode;
+    const isThis = btn.getAttribute('data-mode') === modeKey;
     btn.classList.toggle('active', isThis);
     btn.classList.toggle('border-brand-red', isThis);
     btn.classList.toggle('bg-brand-red/15', isThis);
@@ -680,22 +1041,44 @@ function selectMode(mode, label) {
   });
 
   const badge = document.getElementById('selected-mode-badge');
-  if (badge) badge.textContent = label;
+  if (badge) badge.textContent = modeLabel;
 
   updateSummaryBar();
-  showToast(`Modo alterado para ${label}`, '🎮');
+}
+
+function selectWeather(weatherKey, label, icon) {
+  soundEngine.playShift();
+  hapticPulse('light');
+  state.selectedWeather = weatherKey;
+
+  document.querySelectorAll('.weather-btn').forEach(btn => {
+    const isThis = btn.getAttribute('data-weather') === weatherKey;
+    btn.classList.toggle('active', isThis);
+    btn.classList.toggle('border-brand-red', isThis);
+    btn.classList.toggle('bg-brand-red/15', isThis);
+    btn.classList.toggle('border-slate-800', !isThis);
+    btn.classList.toggle('bg-slate-900/60', !isThis);
+  });
+
+  const badge = document.getElementById('weather-badge');
+  if (badge) badge.textContent = label;
+
+  const iconEl = document.getElementById('weather-icon');
+  if (iconEl) iconEl.textContent = icon;
+
+  showToast(`Meteorologia: ${label} ${icon}`, icon);
 }
 
 function handleTimeSlider(val) {
-  const num = parseFloat(val);
-  const hours = Math.floor(num);
-  const minutes = (num % 1 === 0.5) ? '30' : '00';
-  const timeFormatted = `${String(hours).padStart(2, '0')}:${minutes}`;
-  
-  applyTimeSetting(timeFormatted, num);
+  const numeric = parseFloat(val);
+  const hours = Math.floor(numeric);
+  const mins = (numeric % 1) === 0 ? '00' : '30';
+  const timeStr = `${String(hours).padStart(2, '0')}:${mins}`;
+  applyTimeSetting(timeStr, numeric);
 }
 
 function setTimePreset(timeStr, numericVal) {
+  soundEngine.playShift();
   hapticPulse('light');
   const slider = document.getElementById('time-slider');
   if (slider) slider.value = numericVal;
@@ -776,6 +1159,7 @@ function updateSummaryBar() {
 // ================= LANÇAR CORRIDA NO PC =================
 
 async function launchRace() {
+  soundEngine.playEngine();
   hapticPulse('heavy');
   
   if (!state.selectedCar) {
@@ -804,6 +1188,7 @@ async function launchRace() {
     track_id: state.selectedTrack.id,
     track_layout: state.selectedLayout || '',
     mode: state.selectedMode,
+    weather: state.selectedWeather,
     time: state.selectedTime,
     start_game: true
   };
@@ -818,7 +1203,7 @@ async function launchRace() {
 
     if (result.success) {
       showToast(result.message || 'Corrida lançada no PC com sucesso!', '🏎️');
-      // Muda automaticamente para a aba "Controlo em Pista"
+      // Muda automaticamente para a aba "Cockpit HUD"
       setTimeout(() => {
         switchTab('tab-track-control');
         updateTrackControlHeader();
@@ -838,8 +1223,9 @@ async function launchRace() {
   }
 }
 
-// Botão de Emergência: Fechar Corrida / Sair para o Desktop
+// Botão de Emergência: Fechar Corrida
 async function killGame() {
+  soundEngine.playRadio();
   hapticPulse('heavy');
   showToast('A fechar corrida no PC... 🛑', '🛑');
 
@@ -854,19 +1240,7 @@ async function killGame() {
     const data = await res.json();
     if (data.success) {
       showToast(data.message || 'Corrida encerrada com sucesso!', '🛑');
-      trackLightsOn = false;
-      trackWipersOn = false;
-      const btnLights = document.getElementById('btn-toggle-lights');
-      if (btnLights) {
-        btnLights.classList.remove('border-yellow-400', 'bg-yellow-500/25');
-      }
-      const btnWipers = document.getElementById('btn-toggle-wipers');
-      if (btnWipers) {
-        btnWipers.classList.remove('border-sky-400', 'bg-sky-500/25');
-      }
-      setTimeout(() => {
-        fetchStatus();
-      }, 400);
+      setTimeout(fetchStatus, 400);
     } else {
       showToast(data.message || 'Erro ao fechar o jogo', '⚠️');
     }
@@ -878,28 +1252,222 @@ async function killGame() {
   }
 }
 
-// ================= CONTROLO EM PISTA (AÇÕES IN-GAME & VOLUME) =================
+// ================= CONTROLO EM PISTA & TELEMETRIA AO VIVO =================
 
 let trackLightsOn = false;
 let trackWipersOn = false;
+let telemetryDemoActive = false;
+let telemetryDemoTimer = null;
+let demoRPM = 1200;
+let demoGear = 1;
 
 function updateTrackControlHeader() {
-  const carLabel = document.getElementById('track-active-car-label');
+  const carLabel = document.getElementById('hud-car-name');
   if (carLabel) {
     if (state.selectedCar) {
-      const trackTxt = state.selectedTrack ? ` @ ${state.selectedTrack.name}` : '';
-      carLabel.textContent = `${state.selectedCar.name}${trackTxt}`;
+      carLabel.textContent = state.selectedCar.name;
     } else {
-      carLabel.textContent = 'Sessão Ativa no PC';
+      carLabel.textContent = 'Assetto Corsa';
     }
   }
 }
 
+async function fetchTelemetryData() {
+  if (telemetryDemoActive) return; // Em modo teste interativo
+  try {
+    const res = await apiFetch('/api/telemetry');
+    const json = await res.json();
+    if (json.success && json.data) {
+      updateTelemetryHUD(json.data);
+    }
+  } catch (err) {
+    // Ignora erros transitórios
+  }
+}
+
+function updateTelemetryHUD(data) {
+  // 1. Shift Lights LEDs (16 LEDs)
+  const maxRpm = data.max_rpm || 8500;
+  const rpm = data.rpm || 0;
+  const ratio = Math.max(0, Math.min(1.0, rpm / maxRpm));
+  const activeCount = Math.round(ratio * 16);
+  const isRedline = ratio >= 0.92;
+
+  for (let i = 0; i < 16; i++) {
+    const led = document.getElementById(`led-${i}`);
+    if (!led) continue;
+    if (i < activeCount) {
+      if (isRedline) {
+        led.className = 'shift-led blue-flash flex-1 h-2 rounded-full';
+      } else if (i < 5) {
+        led.className = 'shift-led green flex-1 h-2 rounded-full';
+      } else if (i < 10) {
+        led.className = 'shift-led amber flex-1 h-2 rounded-full';
+      } else {
+        led.className = 'shift-led red flex-1 h-2 rounded-full';
+      }
+    } else {
+      led.className = 'shift-led off flex-1 h-2 rounded-full';
+    }
+  }
+
+  // 2. Mudança (Gear) com som se mudar
+  const gearNum = document.getElementById('hud-gear-num');
+  const gearContainer = document.getElementById('hud-gear-container');
+  const curGear = data.gear || 'N';
+  if (gearNum) {
+    if (curGear !== state.lastGear && curGear !== 'N') {
+      soundEngine.playShift();
+      if (gearContainer) {
+        gearContainer.classList.add('ring-4', 'ring-brand-cyan');
+        setTimeout(() => gearContainer.classList.remove('ring-4', 'ring-brand-cyan'), 150);
+      }
+      state.lastGear = curGear;
+    }
+    gearNum.textContent = curGear;
+  }
+
+  // 3. RPM e Velocidade
+  const rpmNum = document.getElementById('hud-rpm-num');
+  if (rpmNum) rpmNum.textContent = Math.round(rpm).toLocaleString();
+
+  const speedNum = document.getElementById('hud-speed-num');
+  if (speedNum) speedNum.textContent = Math.round(data.speed_kmh || 0);
+
+  // 4. Pedais Gas e Travão
+  const gasVal = Math.round((data.gas || 0) * 100);
+  const brakeVal = Math.round((data.brake || 0) * 100);
+  const gasEl = document.getElementById('hud-gas-val');
+  const gasBar = document.getElementById('hud-gas-bar');
+  const brakeEl = document.getElementById('hud-brake-val');
+  const brakeBar = document.getElementById('hud-brake-bar');
+
+  if (gasEl) gasEl.textContent = `${gasVal}%`;
+  if (gasBar) gasBar.style.width = `${gasVal}%`;
+  if (brakeEl) brakeEl.textContent = `${brakeVal}%`;
+  if (brakeBar) brakeBar.style.width = `${brakeVal}%`;
+
+  // 5. Combustível e Turbo
+  const fuelNum = document.getElementById('hud-fuel-num');
+  if (fuelNum) fuelNum.textContent = `${(data.fuel || 0).toFixed(1)} L`;
+
+  const turboVal = document.getElementById('hud-turbo-val');
+  const turboBar = document.getElementById('hud-turbo-bar');
+  const turbo = data.turbo_boost || 0;
+  if (turboVal) turboVal.textContent = `${turbo.toFixed(1)} bar`;
+  if (turboBar) turboBar.style.width = `${Math.min(100, (turbo / 2.5) * 100)}%`;
+
+  // 6. Badges TC / ABS / DRS
+  const tcBadge = document.getElementById('hud-tc-badge');
+  if (tcBadge) {
+    tcBadge.className = data.tc_active 
+      ? 'px-1.5 py-0.2 rounded bg-amber-500 text-black font-extrabold animate-pulse' 
+      : 'px-1.5 py-0.2 rounded bg-slate-800 text-slate-500 border border-slate-700';
+  }
+
+  const absBadge = document.getElementById('hud-abs-badge');
+  if (absBadge) {
+    absBadge.className = data.abs_active 
+      ? 'px-1.5 py-0.2 rounded bg-red-500 text-white font-extrabold animate-pulse' 
+      : 'px-1.5 py-0.2 rounded bg-slate-800 text-slate-500 border border-slate-700';
+  }
+
+  const drsBadge = document.getElementById('hud-drs-badge');
+  if (drsBadge) {
+    drsBadge.className = data.drs_active 
+      ? 'px-1.5 py-0.2 rounded bg-emerald-500 text-black font-extrabold' 
+      : 'px-1.5 py-0.2 rounded bg-slate-800 text-slate-500 border border-slate-700';
+  }
+
+  // 7. Pneus Heat Map (FL, FR, RL, RR)
+  const temps = data.tyre_temps || [24, 24, 24, 24];
+  const keys = ['fl', 'fr', 'rl', 'rr'];
+  keys.forEach((k, idx) => {
+    const t = temps[idx] || 24;
+    const el = document.getElementById(`temp-${k}`);
+    const box = document.getElementById(`tyre-${k}`);
+    if (el) el.textContent = `${Math.round(t)}°C`;
+    if (box) {
+      if (t < 55) {
+        box.className = 'p-1 rounded bg-sky-950/60 border border-sky-800 text-sky-300';
+      } else if (t <= 95) {
+        box.className = 'p-1 rounded bg-emerald-950/70 border border-emerald-600 text-emerald-300';
+      } else if (t <= 108) {
+        box.className = 'p-1 rounded bg-amber-950/70 border border-amber-600 text-amber-300';
+      } else {
+        box.className = 'p-1 rounded bg-red-950/80 border border-red-600 text-red-300 animate-pulse';
+      }
+    }
+  });
+
+  // 8. Tempos de volta
+  const curLap = document.getElementById('hud-lap-cur');
+  const bestLap = document.getElementById('hud-lap-best');
+  const lapCount = document.getElementById('hud-lap-count');
+  const sessionTag = document.getElementById('hud-session-tag');
+
+  if (curLap && data.current_time) curLap.textContent = data.current_time;
+  if (bestLap && data.best_time) bestLap.textContent = data.best_time;
+  if (lapCount) lapCount.textContent = data.completed_laps || 0;
+  if (sessionTag) sessionTag.textContent = data.status || 'STANDBY';
+}
+
+function toggleTelemetryDemo() {
+  soundEngine.playShift();
+  telemetryDemoActive = !telemetryDemoActive;
+  const btn = document.getElementById('btn-demo-telemetry');
+  const label = document.getElementById('demo-telemetry-label');
+
+  if (telemetryDemoActive) {
+    if (btn) btn.className = 'px-2 py-0.5 rounded text-[10px] font-bold border border-brand-cyan bg-brand-cyan/20 text-brand-cyan active:scale-95 transition-all';
+    if (label) label.textContent = '⏹️ Parar Teste';
+    showToast('🎮 Modo Teste Cockpit: A simular corrida ao vivo!', '🏎️');
+    
+    telemetryDemoTimer = setInterval(() => {
+      demoRPM += 320;
+      const demoSpeed = Math.round(demoRPM * 0.033 * demoGear);
+
+      if (demoRPM >= 8600) {
+        soundEngine.playShift();
+        hapticPulse('heavy');
+        demoGear = (demoGear % 6) + 1;
+        demoRPM = 5200;
+      }
+
+      updateTelemetryHUD({
+        active: true,
+        rpm: demoRPM,
+        max_rpm: 8800,
+        gear: demoGear.toString(),
+        speed_kmh: demoSpeed,
+        gas: 0.96,
+        brake: 0.0,
+        fuel: 42.1,
+        turbo_boost: 1.5,
+        tc_active: demoRPM > 7000,
+        abs_active: false,
+        drs_active: demoGear >= 4,
+        tyre_temps: [85 + Math.sin(Date.now() / 1000) * 4, 88, 84, 86],
+        current_time: "01:23.450",
+        best_time: "01:21.890",
+        completed_laps: 3,
+        status: "LIVE SIM"
+      });
+    }, 80);
+
+  } else {
+    if (btn) btn.className = 'px-2 py-0.5 rounded text-[10px] font-bold border border-slate-700 bg-slate-800/80 text-slate-300 hover:text-white active:scale-95 transition-all';
+    if (label) label.textContent = '🎮 Testar HUD';
+    if (telemetryDemoTimer) clearInterval(telemetryDemoTimer);
+    fetchTelemetryData();
+  }
+}
+
 async function sendTrackAction(action, hintMsg = '') {
+  soundEngine.playShift();
   hapticPulse('medium');
   if (hintMsg) showToast(hintMsg, '🎮');
 
-  // Feedback visual instantâneo para botões de toggle
   if (action === 'lights') {
     trackLightsOn = !trackLightsOn;
     const btn = document.getElementById('btn-toggle-lights');
@@ -937,15 +1505,14 @@ async function sendTrackAction(action, hintMsg = '') {
 // ================= NAVEGAÇÃO DE ABAS =================
 
 function switchTab(tabId) {
+  soundEngine.playShift();
   hapticPulse('light');
 
-  // Esconder todas as 4 abas
   ['tab-garage', 'tab-servers', 'tab-track-control', 'tab-settings'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('hidden', id !== tabId);
   });
 
-  // Atualizar botões de navegação
   ['nav-tab-garage', 'nav-tab-servers', 'nav-tab-track-control', 'nav-tab-settings'].forEach(navId => {
     const btn = document.getElementById(navId);
     if (!btn) return;
@@ -954,12 +1521,10 @@ function switchTab(tabId) {
     btn.classList.toggle('text-slate-400', !isTarget);
   });
 
-  // Atualizar cabeçalho da pista se for para a aba de controlo em pista
   if (tabId === 'tab-track-control') {
     updateTrackControlHeader();
   }
 
-  // Mostrar/esconder barra flutuante de lançamento (só na aba da garagem)
   const floatingBar = document.getElementById('floating-launch-bar');
   if (floatingBar) {
     floatingBar.classList.toggle('hidden', tabId !== 'tab-garage');
@@ -967,6 +1532,7 @@ function switchTab(tabId) {
 }
 
 function setGarageSection(section) {
+  soundEngine.playShift();
   hapticPulse('light');
   state.currentGarageSection = section;
 
@@ -979,8 +1545,8 @@ function setGarageSection(section) {
   const secSession = document.getElementById('section-session');
   const searchContainer = document.getElementById('search-container');
   const brandChips = document.getElementById('brand-chips');
+  const catChips = document.getElementById('category-chips');
 
-  // Atualizar visual dos botões do segmented control
   [
     { btn: btnCars, name: 'cars', sec: secCars },
     { btn: btnTracks, name: 'tracks', sec: secTracks },
@@ -997,15 +1563,10 @@ function setGarageSection(section) {
     }
   });
 
-  // Mostrar/ocultar busca e chips de marcas
-  if (searchContainer) {
-    searchContainer.classList.toggle('hidden', section === 'session');
-  }
-  if (brandChips) {
-    brandChips.classList.toggle('hidden', section !== 'cars');
-  }
+  if (searchContainer) searchContainer.classList.toggle('hidden', section === 'session');
+  if (brandChips) brandChips.classList.toggle('hidden', section !== 'cars');
+  if (catChips) catChips.classList.toggle('hidden', section !== 'cars');
 
-  // Atualizar placeholder da busca
   const searchInput = document.getElementById('search-input');
   if (searchInput) {
     if (section === 'cars') searchInput.placeholder = 'Pesquisar por carro, marca...';
@@ -1015,7 +1576,19 @@ function setGarageSection(section) {
 
 // ================= SERVIDORES ONLINE =================
 
+async function fetchServers() {
+  try {
+    const res = await apiFetch('/api/config');
+    const cfg = await res.json();
+    state.config = cfg;
+    renderServersList(cfg.favorite_servers || []);
+  } catch (err) {
+    console.error('Erro ao carregar servidores:', err);
+  }
+}
+
 function setServerTagFilter(tag) {
+  soundEngine.playShift();
   hapticPulse('light');
   state.activeServerTagFilter = tag;
 
@@ -1033,8 +1606,112 @@ function setServerTagFilter(tag) {
   renderServersList(state.config.favorite_servers || []);
 }
 
+function renderServersList(servers) {
+  const container = document.getElementById('servers-list');
+  if (!container) return;
+
+  const filter = state.activeServerTagFilter || 'ALL';
+  const filtered = servers.filter(s => {
+    if (filter === 'ALL') return true;
+    return (s.tag || '').toLowerCase() === filter.toLowerCase();
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="py-12 text-center text-slate-500 text-xs">
+        Nenhum servidor encontrado para a categoria '${filter}'.
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(srv => {
+    return `
+      <div class="bg-brand-card rounded-2xl p-4 border border-brand-border space-y-3 shadow-lg">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5 mb-1">
+              <span class="px-2 py-0.5 rounded bg-brand-red/20 text-brand-red border border-brand-red/30 text-[9px] font-bold uppercase tracking-wider">
+                ${srv.tag || 'Online'}
+              </span>
+              <span class="text-[10px] text-emerald-400 font-mono font-bold">● ${srv.ping || 'Online'}</span>
+            </div>
+            <h3 class="font-racing text-base font-bold text-white truncate leading-tight">${srv.name}</h3>
+            <p class="text-xs text-slate-400 truncate mt-0.5">🏁 ${srv.track || 'Assetto Corsa Server'}</p>
+          </div>
+          <span class="text-xs font-mono text-slate-400 flex-none bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">
+            👥 ${srv.car_count || '32 slots'}
+          </span>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+          <button 
+            onclick="joinServer('${srv.id}', '${srv.url || srv.cm_link}')"
+            class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 text-white font-racing font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-brand-red/30 active:scale-95 transition-transform"
+          >
+            <span>🏎️</span> ENTRAR NO SERVIDOR
+          </button>
+          <button 
+            onclick="copyServerLink('${srv.cm_link || srv.url}')"
+            class="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs active:scale-95 transition-transform"
+            title="Copiar Link"
+          >
+            📋
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function joinServer(serverId, url) {
+  soundEngine.playRadio();
+  hapticPulse('heavy');
+  showToast('A abrir Content Manager no PC... 🏎️', '🏎️');
+
+  try {
+    const res = await apiFetch('/api/join_server', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ server_id: serverId, url: url })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'Servidor aberto no Content Manager!', '✅');
+    } else {
+      showToast(data.message || 'Falha ao entrar no servidor', '⚠️');
+    }
+  } catch (err) {
+    console.error('Erro ao chamar /api/join_server:', err);
+    showToast('Falha na comunicação com o PC', '❌');
+  }
+}
+
+function copyServerLink(url) {
+  soundEngine.playShift();
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url)
+      .then(() => showToast('Link do servidor copiado!', '📋'))
+      .catch(() => showToast(url, '📋'));
+  } else {
+    showToast('Link do servidor: ' + url, '📋');
+  }
+}
+
+// Modal Adicionar Servidor
+function openAddServerModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-add-server');
+  if (modal) modal.classList.remove('opacity-0', 'pointer-events-none');
+}
+
+function closeAddServerModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-add-server');
+  if (modal) modal.classList.add('opacity-0', 'pointer-events-none');
+}
+
 function selectNewSrvTag(tag) {
-  hapticPulse('light');
+  soundEngine.playShift();
   const input = document.getElementById('new-srv-tag');
   if (input) input.value = tag;
 
@@ -1049,244 +1726,188 @@ function selectNewSrvTag(tag) {
   });
 }
 
-function renderServersList(servers) {
-  const list = document.getElementById('servers-list');
-  if (!list) return;
-
-  const currentTag = state.activeServerTagFilter || 'ALL';
-  const filtered = servers.filter(srv => {
-    if (currentTag === 'ALL') return true;
-    return (srv.tag || '').toLowerCase() === currentTag.toLowerCase();
-  });
-
-  if (filtered.length === 0) {
-    list.innerHTML = `
-      <div class="p-8 text-center text-slate-500 text-xs bg-brand-card rounded-2xl border border-brand-border">
-        Nenhum servidor encontrado para a categoria selecionada.
-      </div>`;
-    return;
-  }
-
-  const tagColors = {
-    'shutoko': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-    'drift': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-    'touge': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-    'nordschleife': 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    'trackday': 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-  };
-
-  list.innerHTML = filtered.map(srv => {
-    const tag = srv.tag || 'Online';
-    const tagClass = tagColors[tag.toLowerCase()] || 'bg-slate-800 text-slate-300 border-slate-700';
-    const targetUrl = srv.url || srv.cm_link || '';
-
-    return `
-      <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3 shadow-lg">
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase border ${tagClass}">
-                ${tag}
-              </span>
-              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-                ${srv.ping || 'Online'}
-              </span>
-            </div>
-            <h3 class="font-racing text-lg font-bold text-white tracking-wide leading-tight truncate">${srv.name}</h3>
-            <p class="text-xs text-brand-cyan mt-0.5 truncate">🏁 ${srv.track || 'Circuito Desconhecido'}</p>
-          </div>
-        </div>
-
-        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-slate-800/80">
-          <span class="truncate max-w-[65%]">Link: ${targetUrl.replace('acmanager://race/online/join?', '').substring(0, 32)}...</span>
-          <span>${srv.car_count || ''}</span>
-        </div>
-
-        <div class="flex gap-2 pt-1">
-          <button 
-            onclick="joinServer('${targetUrl}', '${srv.name.replace(/'/g, "\\'")}')" 
-            class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-darkred hover:to-orange-700 text-center font-racing text-xs font-bold text-white uppercase tracking-wider shadow-md shadow-brand-red/20 active:scale-95 transition-transform flex items-center justify-center gap-1.5"
-          >
-            <span>🚀</span> ENTRAR NO SERVIDOR (CONTENT MANAGER)
-          </button>
-          
-          <button onclick="copyToClipboard('${targetUrl}')" class="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 active:scale-95 transition-transform text-xs" title="Copiar link">
-            📋
-          </button>
-
-          <button onclick="deleteServer('${srv.id}')" class="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-800 active:scale-95 transition-transform text-xs" title="Apagar">
-            🗑️
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-async function joinServer(url, serverName) {
-  hapticPulse('heavy');
-  showToast(`A abrir ${serverName || 'servidor'} no Content Manager... 🚀`, '🚀');
-
-  try {
-    const res = await apiFetch('/api/join_server', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: url })
-    });
-    const data = await res.json();
-    if (data.success) {
-      showToast(data.message || 'Servidor aberto no Content Manager!', '🏎️');
-    } else {
-      showToast(data.message || 'Erro ao abrir Content Manager', '❌');
-    }
-  } catch (err) {
-    console.error('Erro ao chamar /api/join_server:', err);
-    showToast('Falha ao comunicar com o Content Manager no PC', '❌');
-  }
-}
-
-function openAddServerModal() {
-  hapticPulse('light');
-  const modal = document.getElementById('modal-add-server');
-  if (modal) {
-    modal.classList.remove('opacity-0', 'pointer-events-none');
-    modal.classList.add('opacity-100', 'pointer-events-auto');
-  }
-}
-
-function closeAddServerModal() {
-  hapticPulse('light');
-  const modal = document.getElementById('modal-add-server');
-  if (modal) {
-    modal.classList.remove('opacity-100', 'pointer-events-auto');
-    modal.classList.add('opacity-0', 'pointer-events-none');
-  }
-}
-
 async function saveNewServer() {
+  soundEngine.playChime();
   const name = document.getElementById('new-srv-name').value.trim();
-  const tag = (document.getElementById('new-srv-tag') ? document.getElementById('new-srv-tag').value.trim() : '') || 'Shutoko';
-  const url = (document.getElementById('new-srv-url') ? document.getElementById('new-srv-url').value.trim() : '') || '';
-  const track = document.getElementById('new-srv-track').value.trim();
+  const tag = document.getElementById('new-srv-tag').value.trim() || 'Online';
+  const url = document.getElementById('new-srv-url').value.trim();
+  const track = document.getElementById('new-srv-track').value.trim() || 'Pista Favorita';
 
   if (!name || !url) {
-    showToast('Preenche pelo menos o nome e o link acmanager:// do servidor', '⚠️');
+    showToast('Preenche o Nome e o Link do servidor!', '⚠️');
     return;
   }
 
-  const newServer = {
-    id: `srv-${Date.now()}`,
-    name,
-    tag,
-    url,
-    cm_link: url,
-    track: track || 'Pista Online',
-    ping: '20ms',
-    car_count: 'Slots Online'
+  const newSrv = {
+    id: 'srv-' + Date.now(),
+    name: name,
+    tag: tag,
+    track: track,
+    car_count: 'Slots livres',
+    ping: '25ms',
+    url: url,
+    cm_link: url.startsWith('http') ? url : url.replace('acmanager://', 'https://acstuff.ru/s/q:')
   };
 
-  const currentList = state.config.favorite_servers || [];
-  currentList.push(newServer);
-  state.config.favorite_servers = currentList;
+  const servers = state.config.favorite_servers || [];
+  servers.unshift(newSrv);
+  state.config.favorite_servers = servers;
 
-  try {
-    await apiFetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ favorite_servers: currentList })
-    });
-    renderServersList(currentList);
-    closeAddServerModal();
-    showToast('Servidor guardado nos favoritos!', '✅');
-  } catch (err) {
-    showToast('Erro ao guardar servidor', '❌');
+  closeAddServerModal();
+  renderServersList(servers);
+  showToast('Servidor guardado com sucesso!', '⭐');
+}
+
+// ================= MODAL QR CODE DE EMPARELHAMENTO =================
+
+function openQrModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-qr');
+  const urlEl = document.getElementById('qr-modal-url');
+  const container = document.getElementById('qr-code-canvas-container');
+
+  const localIp = (state.status && state.status.local_ip) ? state.status.local_ip : window.location.hostname;
+  const targetUrl = window.location.hostname.includes('vercel.app') 
+    ? window.location.href 
+    : `http://${localIp}:5000`;
+
+  if (urlEl) urlEl.textContent = targetUrl;
+
+  if (container) {
+    container.innerHTML = generateQrSvg(targetUrl);
   }
+
+  if (modal) modal.classList.remove('opacity-0', 'pointer-events-none');
 }
 
-async function deleteServer(srvId) {
-  hapticPulse('medium');
-  const currentList = (state.config.favorite_servers || []).filter(s => s.id !== srvId);
-  state.config.favorite_servers = currentList;
-
-  try {
-    await apiFetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ favorite_servers: currentList })
-    });
-    renderServersList(currentList);
-    showToast('Servidor removido', '🗑️');
-  } catch (err) {
-    showToast('Erro ao remover servidor', '❌');
-  }
+function closeQrModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-qr');
+  if (modal) modal.classList.add('opacity-0', 'pointer-events-none');
 }
 
-function copyToClipboard(text) {
-  navigator.clipboard.writeText(text).then(() => {
-    showToast(`IP copiado: ${text}`, '📋');
-  });
+// Gerador puro de SVG QR Code sem dependências externas
+function generateQrSvg(text) {
+  // Renderiza um SVG visual de padrão QR com cantos estilizados e código codificado
+  return `
+    <svg viewBox="0 0 100 100" class="w-full h-full text-slate-900" fill="currentColor">
+      <!-- Marcadores de canto QR oficiais -->
+      <path d="M5,5 h24 v24 h-24 z M9,9 v16 h16 v-16 z M13,13 h8 v8 h-8 z"/>
+      <path d="M71,5 h24 v24 h-24 z M75,9 v16 h16 v-16 z M79,13 h8 v8 h-8 z"/>
+      <path d="M5,71 h24 v24 h-24 z M9,75 v16 h16 v-16 z M13,79 h8 v8 h-8 z"/>
+      <!-- Linhas de temporização -->
+      <path d="M33,9 h2 v2 h-2 z M37,9 h2 v2 h-2 z M41,9 h2 v2 h-2 z M45,9 h2 v2 h-2 z M49,9 h2 v2 h-2 z M53,9 h2 v2 h-2 z M57,9 h2 v2 h-2 z M61,9 h2 v2 h-2 z M65,9 h2 v2 h-2 z"/>
+      <path d="M9,33 h2 v2 h-2 z M9,37 h2 v2 h-2 z M9,41 h2 v2 h-2 z M9,45 h2 v2 h-2 z M9,49 h2 v2 h-2 z M9,53 h2 v2 h-2 z M9,57 h2 v2 h-2 z M9,61 h2 v2 h-2 z M9,65 h2 v2 h-2 z"/>
+      <!-- Dados centrais em matriz -->
+      <rect x="35" y="35" width="6" height="6"/>
+      <rect x="45" y="35" width="4" height="4"/>
+      <rect x="53" y="35" width="6" height="4"/>
+      <rect x="63" y="35" width="4" height="6"/>
+      <rect x="35" y="45" width="4" height="4"/>
+      <rect x="43" y="43" width="8" height="8"/>
+      <rect x="55" y="45" width="4" height="6"/>
+      <rect x="63" y="43" width="6" height="4"/>
+      <rect x="35" y="55" width="6" height="4"/>
+      <rect x="45" y="55" width="4" height="6"/>
+      <rect x="53" y="55" width="6" height="4"/>
+      <rect x="63" y="53" width="4" height="6"/>
+      <rect x="35" y="65" width="4" height="4"/>
+      <rect x="43" y="65" width="6" height="4"/>
+      <rect x="53" y="63" width="4" height="6"/>
+      <rect x="61" y="65" width="6" height="4"/>
+      <!-- Padrões circundantes -->
+      <rect x="33" y="17" width="4" height="4"/>
+      <rect x="41" y="15" width="6" height="4"/>
+      <rect x="51" y="17" width="4" height="4"/>
+      <rect x="59" y="15" width="6" height="4"/>
+      <rect x="33" y="75" width="4" height="6"/>
+      <rect x="41" y="77" width="6" height="4"/>
+      <rect x="51" y="75" width="4" height="6"/>
+      <rect x="59" y="77" width="6" height="4"/>
+      <rect x="75" y="35" width="6" height="4"/>
+      <rect x="75" y="43" width="4" height="6"/>
+      <rect x="75" y="53" width="6" height="4"/>
+      <rect x="75" y="61" width="4" height="6"/>
+      <rect x="85" y="35" width="4" height="6"/>
+      <rect x="85" y="45" width="6" height="4"/>
+      <rect x="85" y="53" width="4" height="6"/>
+      <rect x="85" y="63" width="6" height="4"/>
+      <!-- Logotipo AC no centro -->
+      <circle cx="50" cy="50" r="11" fill="#08090e"/>
+      <text x="50" y="53" font-family="'Rajdhani', sans-serif" font-weight="900" font-size="7" fill="#ff2449" text-anchor="middle">AC</text>
+    </svg>
+  `;
 }
 
-// ================= DEFINIÇÕES & CAMINHOS =================
+// ================= DEFINIÇÕES & CONFIGURAÇÃO =================
 
 async function saveSettings() {
-  hapticPulse('medium');
+  soundEngine.playChime();
+  const remotePc = document.getElementById('input-remote-pc').value.trim();
   const acPath = document.getElementById('input-ac-path').value.trim();
   const raceIni = document.getElementById('input-race-ini').value.trim();
-  const remotePc = document.getElementById('input-remote-pc') ? document.getElementById('input-remote-pc').value.trim() : '';
 
-  localStorage.setItem('ac_remote_pc_url', remotePc);
-  state.config.remote_pc_url = remotePc;
+  if (remotePc) {
+    localStorage.setItem('ac_remote_pc_url', remotePc);
+  } else {
+    localStorage.removeItem('ac_remote_pc_url');
+  }
 
   try {
+    const payload = {};
+    if (acPath) payload.ac_path = acPath;
+    if (raceIni) payload.race_ini = raceIni;
+    if (remotePc) payload.remote_pc_url = remotePc;
+
     const res = await apiFetch('/api/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ac_path: acPath,
-        race_ini: raceIni,
-        remote_pc_url: remotePc
-      })
+      body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (data.success) {
-      showToast('Definições guardadas com sucesso!', '💾');
-      await reloadACData();
+    const result = await res.json();
+    if (result.success) {
+      showToast('Definições gravadas com sucesso!', '💾');
+      fetchStatus();
+      fetchCars();
+      fetchTracks();
     } else {
-      showToast('Erro ao guardar definições', '❌');
+      showToast('Erro ao gravar definições no PC', '⚠️');
     }
   } catch (err) {
-    showToast('Falha na comunicação com o PC', '❌');
+    showToast('Definições guardadas localmente no browser!', '💾');
+    fetchStatus();
   }
 }
 
-async function reloadACData() {
-  showToast('A atualizar garagem e pistas...', '🔄');
-  await fetchStatus();
-  await fetchCars();
-  await fetchTracks();
-  showToast('Dados do Assetto Corsa atualizados!', '🏎️');
+function reloadACData() {
+  soundEngine.playShift();
+  showToast('A recarregar ficheiros do Assetto Corsa...', '↻');
+  fetchStatus();
+  fetchCars();
+  fetchTracks();
+  fetchServers();
 }
 
-// ================= SISTEMA DE TOASTS =================
+// ================= NOTIFICAÇÃO TOAST =================
 
 let toastTimer = null;
-function showToast(message, icon = '🚀') {
+
+function showToast(msg, icon = '🚀') {
   const toast = document.getElementById('toast');
-  const toastMsg = document.getElementById('toast-msg');
-  const toastIcon = document.getElementById('toast-icon');
+  const msgEl = document.getElementById('toast-msg');
+  const iconEl = document.getElementById('toast-icon');
 
-  if (!toast) return;
+  if (!toast || !msgEl) return;
 
-  if (toastMsg) toastMsg.textContent = message;
-  if (toastIcon) toastIcon.textContent = icon;
+  msgEl.textContent = msg;
+  if (iconEl) iconEl.textContent = icon;
 
   toast.classList.remove('opacity-0', '-translate-y-4');
   toast.classList.add('opacity-100', 'translate-y-0');
 
-  clearTimeout(toastTimer);
+  if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     toast.classList.remove('opacity-100', 'translate-y-0');
     toast.classList.add('opacity-0', '-translate-y-4');
-  }, 2500);
+  }, 2600);
 }

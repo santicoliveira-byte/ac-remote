@@ -7,6 +7,8 @@ import shutil
 import socket
 import subprocess
 import traceback
+import mmap
+import struct
 from pathlib import Path
 try:
     import psutil
@@ -1162,6 +1164,21 @@ def launch_race():
         }
     }
 
+    # Meteorologia / Clima
+    weather_key = payload.get("weather", "clear").lower()
+    weather_map = {
+        "clear": "3_clear",
+        "few_clouds": "4_mid_clear",
+        "clouds": "5_mid_clouds",
+        "fog": "1_heavy_fog",
+        "rain": "rain",
+        "heavy_rain": "heavy_rain"
+    }
+    weather_name = weather_map.get(weather_key, "3_clear")
+    ini_updates["WEATHER"] = {
+        "NAME": weather_name
+    }
+
     write_success = False
     try:
         write_success = update_race_ini_file(race_ini_path, ini_updates)
@@ -1457,12 +1474,210 @@ def trigger_in_game_action():
                 "message": "Tecla ESC executada!"
             })
 
+        elif action in ['tc_toggle', 'tc']:
+            if pydirectinput:
+                pydirectinput.keyDown('ctrl')
+                time.sleep(0.04)
+                pydirectinput.press('t')
+                time.sleep(0.04)
+                pydirectinput.keyUp('ctrl')
+            elif keyboard:
+                keyboard.send('ctrl+t')
+            return jsonify({"success": True, "action": action, "message": "Controlo de Tração (TC) alternado!"})
+
+        elif action in ['abs_toggle', 'abs']:
+            if pydirectinput:
+                pydirectinput.keyDown('ctrl')
+                time.sleep(0.04)
+                pydirectinput.press('a')
+                time.sleep(0.04)
+                pydirectinput.keyUp('ctrl')
+            elif keyboard:
+                keyboard.send('ctrl+a')
+            return jsonify({"success": True, "action": action, "message": "ABS alternado!"})
+
+        elif action in ['brake_bias_forward', 'bias_fw']:
+            if pydirectinput:
+                pydirectinput.press('pageup')
+            elif keyboard:
+                keyboard.send('page up')
+            return jsonify({"success": True, "action": action, "message": "Repartição de Travão: +Frente (Page Up)!"})
+
+        elif action in ['brake_bias_rear', 'bias_rear']:
+            if pydirectinput:
+                pydirectinput.press('pagedown')
+            elif keyboard:
+                keyboard.send('page down')
+            return jsonify({"success": True, "action": action, "message": "Repartição de Travão: +Trás (Page Down)!"})
+
+        elif action in ['drs', 'drs_toggle']:
+            if pydirectinput:
+                pydirectinput.press('space')
+            elif keyboard:
+                keyboard.send('space')
+            return jsonify({"success": True, "action": action, "message": "DRS ativado (Espaço)!"})
+
+        elif action in ['look_back', 'olhar_tras']:
+            if pydirectinput:
+                pydirectinput.press('f')
+            elif keyboard:
+                keyboard.send('f')
+            return jsonify({"success": True, "action": action, "message": "Olhar para Trás (F)!"})
+
+        elif action in ['reset_vr', 'centrar_vr']:
+            if pydirectinput:
+                pydirectinput.keyDown('ctrl')
+                time.sleep(0.04)
+                pydirectinput.press('space')
+                time.sleep(0.04)
+                pydirectinput.keyUp('ctrl')
+            elif keyboard:
+                keyboard.send('ctrl+space')
+            return jsonify({"success": True, "action": action, "message": "Centrar Vista VR (Ctrl + Espaço)!"})
+
+        elif action in ['screenshot', 'foto']:
+            if pydirectinput:
+                pydirectinput.press('f8')
+            elif keyboard:
+                keyboard.send('f8')
+            return jsonify({"success": True, "action": action, "message": "Captura de Ecrã guardada (F8)!"})
+
+        elif action in ['hazards', 'piscas']:
+            if pydirectinput:
+                pydirectinput.keyDown('alt')
+                time.sleep(0.04)
+                pydirectinput.press('h')
+                time.sleep(0.04)
+                pydirectinput.keyUp('alt')
+            elif keyboard:
+                keyboard.send('alt+h')
+            return jsonify({"success": True, "action": action, "message": "4 Piscas de Perigo alternados (Alt + H)!"})
+
+        elif action in ['pit_limiter', 'limiter']:
+            if pydirectinput:
+                pydirectinput.press('p')
+            elif keyboard:
+                keyboard.send('p')
+            return jsonify({"success": True, "action": action, "message": "Limitador de Boxes alternado (P)!"})
+
         else:
             return jsonify({"success": False, "message": f"Ação desconhecida: {action}"}), 400
 
     except Exception as e:
         print(f"[ERRO ACTION] {e}")
         return jsonify({"success": False, "message": f"Erro ao executar ação: {e}"}), 500
+
+
+# ----------------- TELEMETRIA AO VIVO (SHARED MEMORY) & DIAGNÓSTICO -----------------
+
+def read_ac_telemetry():
+    """
+    Lê a telemetria ao vivo da memória partilhada do Assetto Corsa no Windows.
+    Retorna dicionário com RPM, Velocidade, Mudança, Pneus, Voltas, etc.
+    """
+    if sys.platform != 'win32' or IS_VERCEL:
+        return None
+    try:
+        shm_p = mmap.mmap(0, 712, 'Local\\acpmf_physics')
+        p_data = struct.unpack_from('<ifffiiff', shm_p, 0)
+        packet_id, gas, brake, fuel, gear_num, rpms, steer_angle, speed_kmh = p_data
+        
+        # Pneus no offset 152 (4 floats de temperatura interna)
+        tyre_temps = list(struct.unpack_from('<4f', shm_p, 152))
+        # Pressões no offset 88 (4 floats)
+        tyre_pressures = list(struct.unpack_from('<4f', shm_p, 88))
+        
+        drs, tc = struct.unpack_from('<ff', shm_p, 168)
+        abs_val = struct.unpack_from('<f', shm_p, 212)[0]
+        turbo_boost = struct.unpack_from('<f', shm_p, 228)[0]
+        
+        shm_g = mmap.mmap(0, 1024, 'Local\\acpmf_graphic')
+        g_packet_id, g_status, g_session = struct.unpack_from('<iii', shm_g, 0)
+        
+        cur_time_b = shm_g[12:42].decode('utf-16-le', errors='ignore').split('\x00')[0]
+        last_time_b = shm_g[42:72].decode('utf-16-le', errors='ignore').split('\x00')[0]
+        best_time_b = shm_g[72:102].decode('utf-16-le', errors='ignore').split('\x00')[0]
+        completed_laps = struct.unpack_from('<i', shm_g, 132)[0]
+        position = struct.unpack_from('<i', shm_g, 136)[0]
+        
+        gear_str = 'R' if gear_num == 0 else ('N' if gear_num == 1 else str(gear_num - 1))
+        status_map = {0: "OFF", 1: "REPLAY", 2: "LIVE", 3: "PAUSE"}
+        is_running = is_game_running()
+        
+        return {
+            "active": True,
+            "game_running": is_running,
+            "packet_id": packet_id,
+            "status": status_map.get(g_status, "LIVE" if is_running else "OFF"),
+            "speed_kmh": round(max(0.0, speed_kmh), 1),
+            "rpm": max(0, rpms),
+            "max_rpm": 9000,
+            "gear": gear_str,
+            "gas": round(max(0.0, min(1.0, gas)), 2),
+            "brake": round(max(0.0, min(1.0, brake)), 2),
+            "fuel": round(max(0.0, fuel), 1),
+            "steer_angle": round(steer_angle, 1),
+            "tyre_temps": [round(t, 1) for t in tyre_temps],
+            "tyre_pressures": [round(p, 1) for p in tyre_pressures],
+            "tc_active": tc > 0.0,
+            "abs_active": abs_val > 0.0,
+            "drs_active": drs > 0.0,
+            "turbo_boost": round(turbo_boost, 2),
+            "current_time": cur_time_b or "--:--:---",
+            "last_time": last_time_b or "--:--:---",
+            "best_time": best_time_b or "--:--:---",
+            "completed_laps": completed_laps,
+            "position": position if position > 0 else 1
+        }
+    except Exception:
+        return None
+
+@app.route('/api/telemetry', methods=['GET'])
+def get_telemetry():
+    telemetry = read_ac_telemetry()
+    if telemetry:
+        return jsonify({"success": True, "data": telemetry})
+    
+    is_running = is_game_running()
+    return jsonify({
+        "success": True,
+        "data": {
+            "active": False,
+            "game_running": is_running,
+            "status": "STANDBY" if is_running else "OFF",
+            "speed_kmh": 0.0,
+            "rpm": 0,
+            "max_rpm": 8500,
+            "gear": "N",
+            "gas": 0.0,
+            "brake": 0.0,
+            "fuel": 45.0,
+            "steer_angle": 0.0,
+            "tyre_temps": [24.0, 24.0, 24.0, 24.0],
+            "tyre_pressures": [28.0, 28.0, 28.0, 28.0],
+            "tc_active": False,
+            "abs_active": False,
+            "drs_active": False,
+            "turbo_boost": 0.0,
+            "current_time": "--:--:---",
+            "last_time": "--:--:---",
+            "best_time": "--:--:---",
+            "completed_laps": 0,
+            "position": 1
+        }
+    })
+
+@app.route('/api/ping', methods=['GET'])
+def get_ping():
+    cpu = psutil.cpu_percent(interval=None) if psutil else 0.0
+    ram = psutil.virtual_memory().percent if psutil else 0.0
+    return jsonify({
+        "pong": True,
+        "timestamp": time.time(),
+        "cpu": round(cpu, 1),
+        "ram": round(ram, 1),
+        "game_running": is_game_running()
+    })
 
 
 # ----------------- INICIALIZAÇÃO -----------------
