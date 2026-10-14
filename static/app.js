@@ -179,6 +179,7 @@ const state = {
 document.addEventListener('DOMContentLoaded', () => {
   initServiceWorker();
   initTheme();
+  initHudPreferences();
   updateSoundUI(soundEngine.enabled);
   updateFavBadgeCount();
   fetchStatus();
@@ -1252,7 +1253,7 @@ async function killGame() {
   }
 }
 
-// ================= CONTROLO EM PISTA & TELEMETRIA AO VIVO =================
+// ================= CONTROLO EM PISTA & TELEMETRIA AO VIVO (FASE 1 PRO) =================
 
 let trackLightsOn = false;
 let trackWipersOn = false;
@@ -1260,6 +1261,64 @@ let telemetryDemoActive = false;
 let telemetryDemoTimer = null;
 let demoRPM = 1200;
 let demoGear = 1;
+let demoLap = 3;
+let demoFlagIdx = 0;
+
+let hudGaugeMode = localStorage.getItem('ac_hud_mode') || 'digital';
+let oledModeActive = localStorage.getItem('ac_oled_mode') === 'true';
+let gTrail = [];
+let lapHistory = [83.4, 82.9, 82.6, 83.1, 82.2, 82.5, 82.4, 82.1, 81.9, 82.0];
+let currentApexSpeed = null;
+let currentExitSpeed = null;
+let initialFuel = null;
+
+function initHudPreferences() {
+  if (oledModeActive) {
+    document.body.classList.add('oled-mode');
+    const lbl = document.getElementById('oled-label');
+    if (lbl) lbl.textContent = '☀️ Padrão';
+  }
+  applyHudModeUI();
+}
+
+function toggleOledMode() {
+  soundEngine.playShift();
+  oledModeActive = !oledModeActive;
+  document.body.classList.toggle('oled-mode', oledModeActive);
+  localStorage.setItem('ac_oled_mode', oledModeActive);
+  const lbl = document.getElementById('oled-label');
+  if (lbl) lbl.textContent = oledModeActive ? '☀️ Padrão' : '🌑 OLED';
+  showToast(oledModeActive ? 'Modo Noturno OLED Puro Ativado' : 'Modo Padrão Restaurado', '🌑');
+}
+
+function toggleHudGaugeMode() {
+  soundEngine.playShift();
+  hudGaugeMode = (hudGaugeMode === 'digital') ? 'analog' : 'digital';
+  localStorage.setItem('ac_hud_mode', hudGaugeMode);
+  applyHudModeUI();
+  showToast(hudGaugeMode === 'analog' ? '⏱️ Tacómetro Analógico Ativado' : '📟 Cockpit Digital F1 Ativado', '⏱️');
+}
+
+function applyHudModeUI() {
+  const digitalView = document.getElementById('hud-view-digital');
+  const analogView = document.getElementById('hud-view-analog');
+  const modeLbl = document.getElementById('hud-mode-label');
+  if (hudGaugeMode === 'analog') {
+    if (digitalView) digitalView.classList.add('hidden');
+    if (analogView) {
+      analogView.classList.remove('hidden');
+      analogView.classList.add('flex');
+    }
+    if (modeLbl) modeLbl.textContent = '📟 Digital';
+  } else {
+    if (digitalView) digitalView.classList.remove('hidden');
+    if (analogView) {
+      analogView.classList.add('hidden');
+      analogView.classList.remove('flex');
+    }
+    if (modeLbl) modeLbl.textContent = '⏱️ Analógico';
+  }
+}
 
 function updateTrackControlHeader() {
   const carLabel = document.getElementById('hud-car-name');
@@ -1285,10 +1344,280 @@ async function fetchTelemetryData() {
   }
 }
 
+// 1. Gráfico G-Force (G-Bowl 2D Canvas)
+function drawGBowl(latG = 0, longG = 0) {
+  const canvas = document.getElementById('g-force-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w / 2;
+  const cy = h / 2;
+  const maxR = cx - 5;
+  const maxG = 2.0;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Anéis concêntricos (0.5G, 1.0G, 1.5G, 2.0G)
+  const rings = [0.5, 1.0, 1.5, 2.0];
+  rings.forEach((g) => {
+    const r = (g / maxG) * maxR;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = g === 1.0 ? 'rgba(56, 189, 248, 0.45)' : 'rgba(71, 85, 105, 0.25)';
+    ctx.lineWidth = g === 1.0 ? 1.5 : 1;
+    ctx.stroke();
+  });
+
+  // Linhas dos eixos centrais
+  ctx.beginPath();
+  ctx.moveTo(cx, 4);
+  ctx.lineTo(cx, h - 4);
+  ctx.moveTo(4, cy);
+  ctx.lineTo(w - 4, cy);
+  ctx.strokeStyle = 'rgba(71, 85, 105, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Coordenadas calculadas
+  const totalG = Math.hypot(latG, longG);
+  const px = cx + Math.max(-maxR, Math.min(maxR, (latG / maxG) * maxR));
+  const py = cy - Math.max(-maxR, Math.min(maxR, (longG / maxG) * maxR)); // Travão = desaceleração frontal = cima
+
+  // Rasto de inércia dinâmico
+  gTrail.push({ x: px, y: py });
+  if (gTrail.length > 5) gTrail.shift();
+
+  if (gTrail.length > 1) {
+    ctx.beginPath();
+    ctx.moveTo(gTrail[0].x, gTrail[0].y);
+    for (let i = 1; i < gTrail.length; i++) {
+      ctx.lineTo(gTrail[i].x, gTrail[i].y);
+    }
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.4)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Ponto G brilhante com aura de neon
+  const radGrad = ctx.createRadialGradient(px, py, 1, px, py, 8);
+  radGrad.addColorStop(0, '#ffffff');
+  radGrad.addColorStop(0.3, totalG > 1.2 ? '#ff2449' : '#00e5ff');
+  radGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = radGrad;
+  ctx.beginPath();
+  ctx.arc(px, py, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = totalG > 1.2 ? '#ff2449' : '#00e5ff';
+  ctx.beginPath();
+  ctx.arc(px, py, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Etiquetas numéricas
+  const gTotalEl = document.getElementById('hud-g-total');
+  const gLatEl = document.getElementById('hud-g-lat');
+  const gLongEl = document.getElementById('hud-g-long');
+  if (gTotalEl) gTotalEl.textContent = `${totalG.toFixed(2)} G`;
+  if (gLatEl) gLatEl.textContent = `${latG >= 0 ? '+' : ''}${latG.toFixed(2)}`;
+  if (gLongEl) gLongEl.textContent = `${longG >= 0 ? '+' : ''}${longG.toFixed(2)}`;
+}
+
+// 6. Tacómetro Analógico Circular Alternativo
+function drawAnalogGauge(rpm = 0, maxRpm = 8500, speed = 0, gear = 'N') {
+  const canvas = document.getElementById('analog-tachometer-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w / 2;
+  const cy = h - 15;
+  const radius = 100;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const startAngle = 0.8 * Math.PI;
+  const endAngle = 2.2 * Math.PI;
+  const totalSweep = endAngle - startAngle;
+
+  // Arco de fundo
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, endAngle);
+  ctx.strokeStyle = 'rgba(30, 41, 59, 0.8)';
+  ctx.lineWidth = 14;
+  ctx.stroke();
+
+  // Zona vermelha (Redline)
+  const redlineStart = startAngle + totalSweep * 0.82;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, redlineStart, endAngle);
+  ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
+  ctx.lineWidth = 14;
+  ctx.stroke();
+
+  // Arco de rotação ativo
+  const rpmRatio = Math.max(0, Math.min(1.0, rpm / maxRpm));
+  const currentAngle = startAngle + totalSweep * rpmRatio;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, currentAngle);
+  ctx.strokeStyle = rpmRatio >= 0.82 ? '#ef4444' : '#00e5ff';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+
+  // Ticks principais (0 a 9 x1000 RPM)
+  for (let i = 0; i <= 9; i++) {
+    const tickRatio = i / 9;
+    const a = startAngle + totalSweep * tickRatio;
+    const innerR = radius - (i % 2 === 0 ? 16 : 10);
+    const outerR = radius + 4;
+    const x1 = cx + Math.cos(a) * innerR;
+    const y1 = cy + Math.sin(a) * innerR;
+    const x2 = cx + Math.cos(a) * outerR;
+    const y2 = cy + Math.sin(a) * outerR;
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = i >= 7 ? '#ef4444' : '#94a3b8';
+    ctx.lineWidth = i % 2 === 0 ? 2.5 : 1.5;
+    ctx.stroke();
+
+    const textR = radius - 24;
+    const tx = cx + Math.cos(a) * textR;
+    const ty = cy + Math.sin(a) * textR;
+    ctx.fillStyle = i >= 7 ? '#f87171' : '#cbd5e1';
+    ctx.font = 'bold 11px Rajdhani, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i.toString(), tx, ty);
+  }
+
+  // Agulha analógica com sombra neon
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(currentAngle);
+  ctx.beginPath();
+  ctx.moveTo(0, -3.5);
+  ctx.lineTo(radius - 6, 0);
+  ctx.lineTo(0, 3.5);
+  ctx.fillStyle = rpmRatio >= 0.88 ? '#ff2449' : '#f97316';
+  ctx.shadowColor = '#f97316';
+  ctx.shadowBlur = 10;
+  ctx.fill();
+  ctx.restore();
+
+  // Cubo central da agulha
+  const hubGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, 14);
+  hubGrad.addColorStop(0, '#475569');
+  hubGrad.addColorStop(0.7, '#0f172a');
+  hubGrad.addColorStop(1, '#020617');
+  ctx.beginPath();
+  ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+  ctx.fillStyle = hubGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Parafuso central vermelho
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#ef4444';
+  ctx.fill();
+
+  // Atualizar contadores
+  const aSpeed = document.getElementById('analog-speed-num');
+  const aGear = document.getElementById('analog-gear-num');
+  const aRpm = document.getElementById('analog-rpm-num');
+  if (aSpeed) aSpeed.textContent = Math.round(speed);
+  if (aGear) aGear.textContent = gear;
+  if (aRpm) aRpm.textContent = Math.round(rpm).toLocaleString();
+}
+
+// 13. Histórico de 10 Voltas (Sparkline Canvas)
+function drawLapHistory(laps = lapHistory) {
+  const canvas = document.getElementById('lap-history-canvas');
+  if (!canvas || !laps || laps.length === 0) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const minLap = Math.min(...laps);
+  const maxLap = Math.max(...laps);
+  const range = (maxLap - minLap) || 1;
+  const barWidth = (w / laps.length) - 2;
+
+  laps.forEach((time, idx) => {
+    const isBest = time === minLap;
+    const normalizedH = Math.max(4, Math.min(h - 4, ((maxLap - time) / range) * (h - 8) + 4));
+    const x = idx * (barWidth + 2) + 1;
+    const y = h - normalizedH;
+
+    ctx.fillStyle = isBest ? '#eab308' : (idx === laps.length - 1 ? '#00e5ff' : '#334155');
+    ctx.fillRect(x, y, barWidth, normalizedH);
+  });
+}
+
+// 14. Velocidade de Curva: Apex (Mínima) e Exit (Saída)
+function updateTrackCornerTracker(speed, brake, gas, steer) {
+  if (brake > 0.25 || Math.abs(steer) > 22) {
+    if (currentApexSpeed === null || speed < currentApexSpeed) {
+      currentApexSpeed = Math.round(speed);
+      const apexEl = document.getElementById('hud-apex-speed');
+      if (apexEl) apexEl.textContent = `${currentApexSpeed} km/h`;
+    }
+  } else if (currentApexSpeed !== null && gas > 0.6 && speed > (currentApexSpeed + 12)) {
+    currentExitSpeed = Math.round(speed);
+    const exitEl = document.getElementById('hud-exit-speed');
+    if (exitEl) exitEl.textContent = `${currentExitSpeed} km/h`;
+    currentApexSpeed = null;
+  }
+}
+
+// 7. Bandeiras de Pista Interativas
+function updateFlagsBanner(flag = 'NONE') {
+  const banner = document.getElementById('hud-flag-alert');
+  const icon = document.getElementById('hud-flag-icon');
+  const text = document.getElementById('hud-flag-text');
+  if (!banner || !icon || !text) return;
+
+  banner.className = 'w-full py-1.5 px-3 rounded-xl mb-2 text-center text-xs font-black tracking-wider uppercase flex items-center justify-center gap-2 shadow-lg transition-all';
+
+  if (flag === 'YELLOW') {
+    banner.classList.add('flag-banner-yellow');
+    icon.textContent = '⚠️';
+    text.textContent = 'BANDEIRA AMARELA NO SETOR - REDUZA VELOCIDADE';
+  } else if (flag === 'BLUE') {
+    banner.classList.add('flag-banner-blue');
+    icon.textContent = '🟦';
+    text.textContent = 'BANDEIRA AZUL - CEDA PASSAGEM AO LÍDER';
+  } else if (flag === 'CHECKERED') {
+    banner.classList.add('flag-banner-checkered');
+    icon.textContent = '🏁';
+    text.textContent = 'BANDEIRA DE XADREZ - FIM DE SESSÃO';
+  } else if (flag === 'PENALTY') {
+    banner.classList.add('bg-red-600', 'text-white');
+    icon.textContent = '⛔';
+    text.textContent = 'PENALIZAÇÃO DE PIT LANE';
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+// ATUALIZAÇÃO GERAL DO HUD DE TELEMETRIA
 function updateTelemetryHUD(data) {
-  // 1. Shift Lights LEDs (16 LEDs)
   const maxRpm = data.max_rpm || 8500;
   const rpm = data.rpm || 0;
+  const speed = data.speed_kmh || 0;
+  const gas = data.gas || 0;
+  const brake = data.brake || 0;
+  const steer = data.steer_angle || 0;
+  const fuel = data.fuel || 0;
+  const completedLaps = data.completed_laps || 0;
+
+  // 1. Shift Lights LEDs (16 LEDs)
   const ratio = Math.max(0, Math.min(1.0, rpm / maxRpm));
   const activeCount = Math.round(ratio * 16);
   const isRedline = ratio >= 0.92;
@@ -1311,10 +1640,12 @@ function updateTelemetryHUD(data) {
     }
   }
 
-  // 2. Mudança (Gear) com som se mudar
+  // 2. Mudança (Gear) e Alerta de Corte de Ignição / Rev Limit (Item 10)
   const gearNum = document.getElementById('hud-gear-num');
   const gearContainer = document.getElementById('hud-gear-container');
+  const cutoffAlert = document.getElementById('hud-rev-cutoff-alert');
   const curGear = data.gear || 'N';
+
   if (gearNum) {
     if (curGear !== state.lastGear && curGear !== 'N') {
       soundEngine.playShift();
@@ -1327,16 +1658,25 @@ function updateTelemetryHUD(data) {
     gearNum.textContent = curGear;
   }
 
+  // Corte de Ignição / Anti-lag Flash
+  if (ratio >= 0.98) {
+    if (gearContainer) gearContainer.classList.add('rev-cutoff-active');
+    if (cutoffAlert) cutoffAlert.classList.remove('hidden');
+  } else {
+    if (gearContainer) gearContainer.classList.remove('rev-cutoff-active');
+    if (cutoffAlert) cutoffAlert.classList.add('hidden');
+  }
+
   // 3. RPM e Velocidade
   const rpmNum = document.getElementById('hud-rpm-num');
   if (rpmNum) rpmNum.textContent = Math.round(rpm).toLocaleString();
 
   const speedNum = document.getElementById('hud-speed-num');
-  if (speedNum) speedNum.textContent = Math.round(data.speed_kmh || 0);
+  if (speedNum) speedNum.textContent = Math.round(speed);
 
   // 4. Pedais Gas e Travão
-  const gasVal = Math.round((data.gas || 0) * 100);
-  const brakeVal = Math.round((data.brake || 0) * 100);
+  const gasVal = Math.round(gas * 100);
+  const brakeVal = Math.round(brake * 100);
   const gasEl = document.getElementById('hud-gas-val');
   const gasBar = document.getElementById('hud-gas-bar');
   const brakeEl = document.getElementById('hud-brake-val');
@@ -1349,7 +1689,7 @@ function updateTelemetryHUD(data) {
 
   // 5. Combustível e Turbo
   const fuelNum = document.getElementById('hud-fuel-num');
-  if (fuelNum) fuelNum.textContent = `${(data.fuel || 0).toFixed(1)} L`;
+  if (fuelNum) fuelNum.textContent = `${fuel.toFixed(1)} L`;
 
   const turboVal = document.getElementById('hud-turbo-val');
   const turboBar = document.getElementById('hud-turbo-bar');
@@ -1379,37 +1719,155 @@ function updateTelemetryHUD(data) {
       : 'px-1.5 py-0.2 rounded bg-slate-800 text-slate-500 border border-slate-700';
   }
 
-  // 7. Pneus Heat Map (FL, FR, RL, RR)
+  // 7. G-Bowl 2D (Item 1)
+  const latG = data.g_force ? data.g_force.lat : 0;
+  const longG = data.g_force ? data.g_force.long : 0;
+  drawGBowl(latG, longG);
+
+  // 8. Ângulo de Direção e Detetor de Drift (Item 9)
+  const steerWheel = document.getElementById('hud-steering-wheel');
+  const steerDeg = document.getElementById('hud-steer-deg');
+  const driftBadge = document.getElementById('hud-drift-badge');
+  if (steerWheel) steerWheel.style.transform = `rotate(${steer}deg)`;
+  if (steerDeg) steerDeg.textContent = `${steer.toFixed(1)}°`;
+
+  if (driftBadge) {
+    if (Math.abs(steer) > 24 && speed > 35) {
+      driftBadge.className = 'px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-orange-600 text-white border border-orange-400 animate-pulse';
+      driftBadge.textContent = '🔥 DRIFT OVERSTEER';
+    } else if (Math.abs(steer) > 12) {
+      driftBadge.className = 'px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-sky-950 text-sky-400 border border-sky-800';
+      driftBadge.textContent = 'CURVA';
+    } else {
+      driftBadge.className = 'px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-800 text-slate-500 border border-slate-700';
+      driftBadge.textContent = 'NEUTRO';
+    }
+  }
+
+  // 9. Velocidade Apex & Exit (Item 14)
+  updateTrackCornerTracker(speed, brake, gas, steer);
+
+  // 10. Matriz dos 4 Pneus: Temperaturas, Pressões Dinâmicas, Desgaste e Discos de Travão (Items 3, 4, 5)
   const temps = data.tyre_temps || [24, 24, 24, 24];
+  const pressures = data.tyre_pressures || [28.0, 28.0, 28.0, 28.0];
+  const wears = data.tyre_wear || [100, 100, 100, 100];
+  const brakes = data.brake_temps || [150, 150, 120, 120];
   const keys = ['fl', 'fr', 'rl', 'rr'];
+
   keys.forEach((k, idx) => {
     const t = temps[idx] || 24;
-    const el = document.getElementById(`temp-${k}`);
+    const p = pressures[idx] || 28.0;
+    const w = wears[idx] !== undefined ? wears[idx] : 100;
+    const b = brakes[idx] || 120;
+
+    // Temperatura
+    const elTemp = document.getElementById(`temp-${k}`);
+    if (elTemp) elTemp.textContent = `${Math.round(t)}°C`;
+
+    // Pressão em PSI (Ideal: 27.0 - 29.5 PSI)
+    const elPsi = document.getElementById(`psi-${k}`);
+    if (elPsi) {
+      elPsi.textContent = `${p.toFixed(1)} PSI`;
+      elPsi.className = (p >= 27.0 && p <= 29.5) ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold';
+    }
+
+    // Desgaste da borracha
+    const elWear = document.getElementById(`wear-${k}`);
+    const barWear = document.getElementById(`wear-bar-${k}`);
+    if (elWear) elWear.textContent = `${Math.round(w)}%`;
+    if (barWear) {
+      barWear.style.width = `${Math.max(0, Math.min(100, w))}%`;
+      barWear.className = w > 75 ? 'h-full bg-emerald-500 rounded-full' : (w > 50 ? 'h-full bg-amber-500 rounded-full' : 'h-full bg-red-500 rounded-full');
+    }
+
+    // Travões e Efeito Incandescente (>500°C)
+    const elBrake = document.getElementById(`brake-${k}`);
+    if (elBrake) elBrake.textContent = `${Math.round(b)}°C`;
+
     const box = document.getElementById(`tyre-${k}`);
-    if (el) el.textContent = `${Math.round(t)}°C`;
     if (box) {
-      if (t < 55) {
-        box.className = 'p-1 rounded bg-sky-950/60 border border-sky-800 text-sky-300';
-      } else if (t <= 95) {
-        box.className = 'p-1 rounded bg-emerald-950/70 border border-emerald-600 text-emerald-300';
-      } else if (t <= 108) {
-        box.className = 'p-1 rounded bg-amber-950/70 border border-amber-600 text-amber-300';
+      // Glow incandescente de disco de travão
+      if (b > 500) {
+        box.classList.add('brake-overheat');
       } else {
-        box.className = 'p-1 rounded bg-red-950/80 border border-red-600 text-red-300 animate-pulse';
+        box.classList.remove('brake-overheat');
       }
     }
   });
 
-  // 8. Tempos de volta
+  // 11. Delta Split & Micro-Setores (Items 2 e 12)
+  const deltaVal = document.getElementById('hud-delta-val');
+  if (deltaVal) {
+    const splitStr = data.split || '';
+    if (splitStr.startsWith('-')) {
+      deltaVal.textContent = splitStr;
+      deltaVal.className = 'font-bold text-xs px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 animate-pulse';
+    } else if (splitStr.startsWith('+')) {
+      deltaVal.textContent = splitStr;
+      deltaVal.className = 'font-bold text-xs px-1.5 py-0.2 rounded bg-red-500/20 text-red-400 border border-red-500/40';
+    } else {
+      deltaVal.textContent = splitStr || '-0.00s';
+      deltaVal.className = 'font-bold text-xs px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700';
+    }
+  }
+
+  // Micro-Setores
+  const s1 = document.getElementById('sector-1-badge');
+  const s2 = document.getElementById('sector-2-badge');
+  const s3 = document.getElementById('sector-3-badge');
+  if (s1 && s2 && s3) {
+    if (completedLaps > 0) {
+      s1.className = 'px-1.5 py-0.2 rounded font-bold text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-700';
+      s2.className = 'px-1.5 py-0.2 rounded font-bold text-[9px] bg-purple-950 text-purple-300 border border-purple-700';
+      s3.className = 'px-1.5 py-0.2 rounded font-bold text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-700';
+    }
+  }
+
+  // 12. Calculadora de Consumo por Volta (Item 11)
+  if (initialFuel === null || fuel > initialFuel) initialFuel = fuel;
+  const fuelPerLapEl = document.getElementById('hud-fuel-per-lap');
+  const fuelLapsLeftEl = document.getElementById('hud-fuel-laps-left');
+  const fuelStatusEl = document.getElementById('hud-fuel-status-tag');
+
+  if (completedLaps > 0 && initialFuel > fuel) {
+    const consumed = initialFuel - fuel;
+    const avgPerLap = consumed / completedLaps;
+    const lapsLeft = avgPerLap > 0 ? Math.floor(fuel / avgPerLap) : '--';
+    if (fuelPerLapEl) fuelPerLapEl.textContent = `~${avgPerLap.toFixed(2)} L/v`;
+    if (fuelLapsLeftEl) fuelLapsLeftEl.textContent = `~${lapsLeft} voltas`;
+  } else {
+    if (fuelPerLapEl) fuelPerLapEl.textContent = '~2.2 L/v';
+    if (fuelLapsLeftEl) fuelLapsLeftEl.textContent = `~${Math.floor(fuel / 2.2)} voltas`;
+  }
+
+  if (fuelStatusEl) {
+    if (fuel <= 5.0) {
+      fuelStatusEl.textContent = '⚠️ REABASTECER';
+      fuelStatusEl.className = 'text-red-400 font-bold animate-pulse';
+    } else {
+      fuelStatusEl.textContent = 'TANQUE OK';
+      fuelStatusEl.className = 'text-emerald-400 font-bold';
+    }
+  }
+
+  // 13. Tempos de Volta e Histórico Sparkline (Item 13)
   const curLap = document.getElementById('hud-lap-cur');
   const bestLap = document.getElementById('hud-lap-best');
   const lapCount = document.getElementById('hud-lap-count');
-  const sessionTag = document.getElementById('hud-session-tag');
 
   if (curLap && data.current_time) curLap.textContent = data.current_time;
   if (bestLap && data.best_time) bestLap.textContent = data.best_time;
-  if (lapCount) lapCount.textContent = data.completed_laps || 0;
-  if (sessionTag) sessionTag.textContent = data.status || 'STANDBY';
+  if (lapCount) lapCount.textContent = completedLaps;
+
+  drawLapHistory();
+
+  // 14. Bandeiras de Pista Interativas (Item 7)
+  updateFlagsBanner(data.flag || 'NONE');
+
+  // 15. Vista Analógica (se ativa)
+  if (hudGaugeMode === 'analog') {
+    drawAnalogGauge(rpm, maxRpm, speed, curGear);
+  }
 }
 
 function toggleTelemetryDemo() {
@@ -1421,18 +1879,35 @@ function toggleTelemetryDemo() {
   if (telemetryDemoActive) {
     if (btn) btn.className = 'px-2 py-0.5 rounded text-[10px] font-bold border border-brand-cyan bg-brand-cyan/20 text-brand-cyan active:scale-95 transition-all';
     if (label) label.textContent = '⏹️ Parar Teste';
-    showToast('🎮 Modo Teste Cockpit: A simular corrida ao vivo!', '🏎️');
+    showToast('🎮 Modo Teste Cockpit PRO: A simular telemetria total!', '🏎️');
     
-    telemetryDemoTimer = setInterval(() => {
-      demoRPM += 320;
-      const demoSpeed = Math.round(demoRPM * 0.033 * demoGear);
+    let demoTimerCount = 0;
+    const demoFlags = ['NONE', 'NONE', 'YELLOW', 'NONE', 'BLUE', 'NONE', 'CHECKERED'];
 
-      if (demoRPM >= 8600) {
+    telemetryDemoTimer = setInterval(() => {
+      demoTimerCount++;
+      demoRPM += 280;
+      const demoSpeed = Math.round(demoRPM * 0.034 * demoGear);
+
+      // Simulação de forças G e travão incandescente
+      let simLatG = Math.sin(demoTimerCount * 0.15) * 1.45;
+      let simLongG = 0.65;
+      let simBrakeTemp = 210;
+      let simBrakeVal = 0.0;
+      let simSteer = Math.sin(demoTimerCount * 0.15) * 45;
+
+      if (demoRPM >= 8650) {
         soundEngine.playShift();
         hapticPulse('heavy');
         demoGear = (demoGear % 6) + 1;
-        demoRPM = 5200;
+        demoRPM = 5100;
+        simLongG = -1.35; // Desaceleração forte na troca / travagem
+        simBrakeVal = 0.85;
+        simBrakeTemp = 620; // Incandescente!
+        if (demoGear === 1) demoLap++;
       }
+
+      const activeFlag = demoFlags[Math.floor(demoTimerCount / 40) % demoFlags.length];
 
       updateTelemetryHUD({
         active: true,
@@ -1440,17 +1915,24 @@ function toggleTelemetryDemo() {
         max_rpm: 8800,
         gear: demoGear.toString(),
         speed_kmh: demoSpeed,
-        gas: 0.96,
-        brake: 0.0,
-        fuel: 42.1,
-        turbo_boost: 1.5,
-        tc_active: demoRPM > 7000,
-        abs_active: false,
+        gas: simBrakeVal > 0 ? 0.0 : 0.98,
+        brake: simBrakeVal,
+        fuel: Math.max(12.0, 42.0 - (demoLap * 2.1)),
+        turbo_boost: 1.6,
+        steer_angle: simSteer,
+        g_force: { lat: simLatG, long: simLongG, vert: 1.0 },
+        tc_active: demoRPM > 7200,
+        abs_active: simBrakeVal > 0.5,
         drs_active: demoGear >= 4,
-        tyre_temps: [85 + Math.sin(Date.now() / 1000) * 4, 88, 84, 86],
-        current_time: "01:23.450",
+        tyre_temps: [86 + simLatG * 5, 88 - simLatG * 5, 85, 86],
+        tyre_pressures: [28.2, 28.5, 27.9, 28.1],
+        tyre_wear: [98 - demoLap, 97 - demoLap, 95 - demoLap, 96 - demoLap],
+        brake_temps: [simBrakeTemp, simBrakeTemp, simBrakeTemp - 80, simBrakeTemp - 80],
+        split: "-0.38s",
+        flag: activeFlag,
+        current_time: "01:22.450",
         best_time: "01:21.890",
-        completed_laps: 3,
+        completed_laps: demoLap,
         status: "LIVE SIM"
       });
     }, 80);

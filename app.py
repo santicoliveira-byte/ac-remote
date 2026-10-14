@@ -1582,10 +1582,19 @@ def read_ac_telemetry():
         p_data = struct.unpack_from('<ifffiiff', shm_p, 0)
         packet_id, gas, brake, fuel, gear_num, rpms, steer_angle, speed_kmh = p_data
         
+        # G-Force no offset 44 (x=lat, y=vert, z=long)
+        accG = struct.unpack_from('<3f', shm_p, 44)
+        
         # Pneus no offset 152 (4 floats de temperatura interna)
         tyre_temps = list(struct.unpack_from('<4f', shm_p, 152))
         # Pressões no offset 88 (4 floats)
         tyre_pressures = list(struct.unpack_from('<4f', shm_p, 88))
+        # Desgaste dos pneus no offset 120
+        tyre_wear = list(struct.unpack_from('<4f', shm_p, 120))
+        # Travões (temperatura dos discos das 4 rodas) no offset 300
+        brake_temps = list(struct.unpack_from('<4f', shm_p, 300))
+        # Wheel slip no offset 56
+        wheel_slip = list(struct.unpack_from('<4f', shm_p, 56))
         
         drs, tc = struct.unpack_from('<ff', shm_p, 168)
         abs_val = struct.unpack_from('<f', shm_p, 212)[0]
@@ -1597,8 +1606,14 @@ def read_ac_telemetry():
         cur_time_b = shm_g[12:42].decode('utf-16-le', errors='ignore').split('\x00')[0]
         last_time_b = shm_g[42:72].decode('utf-16-le', errors='ignore').split('\x00')[0]
         best_time_b = shm_g[72:102].decode('utf-16-le', errors='ignore').split('\x00')[0]
+        split_b = shm_g[102:132].decode('utf-16-le', errors='ignore').split('\x00')[0]
+        
         completed_laps = struct.unpack_from('<i', shm_g, 132)[0]
         position = struct.unpack_from('<i', shm_g, 136)[0]
+        
+        flag_val = struct.unpack_from('<i', shm_g, 268)[0]
+        flags_map = {0: "NONE", 1: "BLUE", 2: "YELLOW", 3: "BLACK", 4: "WHITE", 5: "CHECKERED", 6: "PENALTY"}
+        flag_name = flags_map.get(flag_val, "NONE")
         
         gear_str = 'R' if gear_num == 0 else ('N' if gear_num == 1 else str(gear_num - 1))
         status_map = {0: "OFF", 1: "REPLAY", 2: "LIVE", 3: "PAUSE"}
@@ -1617,8 +1632,16 @@ def read_ac_telemetry():
             "brake": round(max(0.0, min(1.0, brake)), 2),
             "fuel": round(max(0.0, fuel), 1),
             "steer_angle": round(steer_angle, 1),
+            "g_force": {
+                "lat": round(accG[0], 2),
+                "long": round(accG[2], 2),
+                "vert": round(accG[1], 2)
+            },
             "tyre_temps": [round(t, 1) for t in tyre_temps],
             "tyre_pressures": [round(p, 1) for p in tyre_pressures],
+            "tyre_wear": [round(w, 1) for w in tyre_wear],
+            "brake_temps": [round(b, 1) for b in brake_temps],
+            "wheel_slip": [round(s, 2) for s in wheel_slip],
             "tc_active": tc > 0.0,
             "abs_active": abs_val > 0.0,
             "drs_active": drs > 0.0,
@@ -1626,6 +1649,8 @@ def read_ac_telemetry():
             "current_time": cur_time_b or "--:--:---",
             "last_time": last_time_b or "--:--:---",
             "best_time": best_time_b or "--:--:---",
+            "split": split_b or "",
+            "flag": flag_name,
             "completed_laps": completed_laps,
             "position": position if position > 0 else 1
         }
@@ -1653,8 +1678,12 @@ def get_telemetry():
             "brake": 0.0,
             "fuel": 45.0,
             "steer_angle": 0.0,
+            "g_force": {"lat": 0.0, "long": 0.0, "vert": 1.0},
             "tyre_temps": [24.0, 24.0, 24.0, 24.0],
             "tyre_pressures": [28.0, 28.0, 28.0, 28.0],
+            "tyre_wear": [100.0, 100.0, 100.0, 100.0],
+            "brake_temps": [150.0, 150.0, 120.0, 120.0],
+            "wheel_slip": [0.0, 0.0, 0.0, 0.0],
             "tc_active": False,
             "abs_active": False,
             "drs_active": False,
@@ -1662,6 +1691,8 @@ def get_telemetry():
             "current_time": "--:--:---",
             "last_time": "--:--:---",
             "best_time": "--:--:---",
+            "split": "",
+            "flag": "NONE",
             "completed_laps": 0,
             "position": 1
         }

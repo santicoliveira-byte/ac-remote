@@ -149,6 +149,67 @@
     .pulse-btn {
       animation: pulseGlow 2.5s infinite;
     }
+
+    /* OLED Mode (Fase 1: Item 8) */
+    body.oled-mode, 
+    body.oled-mode header,
+    body.oled-mode nav,
+    body.oled-mode #tab-track-control, 
+    body.oled-mode .cockpit-card {
+      background: #000000 !important;
+      background-image: none !important;
+    }
+    body.oled-mode .border-brand-border, 
+    body.oled-mode .border-slate-800,
+    body.oled-mode .border-slate-700 {
+      border-color: #141416 !important;
+    }
+
+    /* Incandescent Brake Disc Glow (Fase 1: Item 5) */
+    @keyframes brake-glow {
+      0% { box-shadow: 0 0 6px rgba(249, 115, 22, 0.5), inset 0 0 4px rgba(239, 68, 68, 0.4); border-color: #ea580c; }
+      100% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.95), inset 0 0 10px rgba(249, 115, 22, 0.9); border-color: #ef4444; }
+    }
+    .brake-overheat {
+      animation: brake-glow 0.8s infinite alternate !important;
+      background: radial-gradient(circle, rgba(239, 68, 68, 0.25) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+    }
+
+    /* Rev Cut-off flash (Fase 1: Item 10) */
+    @keyframes rev-cutoff {
+      0%, 100% { background-color: #ef4444; color: #ffffff; transform: scale(1.03); }
+      50% { background-color: #000000; color: #ef4444; transform: scale(1.0); }
+    }
+    .rev-cutoff-active {
+      animation: rev-cutoff 0.08s infinite !important;
+      box-shadow: 0 0 30px #ef4444 !important;
+    }
+
+    /* Flags Banner animations (Fase 1: Item 7) */
+    @keyframes flag-yellow-pulse {
+      0%, 100% { background-color: rgba(234, 179, 8, 0.95); color: #000; }
+      50% { background-color: rgba(161, 98, 7, 0.85); color: #fff; }
+    }
+    @keyframes flag-blue-pulse {
+      0%, 100% { background-color: rgba(59, 130, 246, 0.95); color: #fff; }
+      50% { background-color: rgba(29, 78, 216, 0.85); color: #fff; }
+    }
+    .flag-banner-yellow { animation: flag-yellow-pulse 0.7s infinite ease-in-out; }
+    .flag-banner-blue { animation: flag-blue-pulse 0.8s infinite ease-in-out; }
+    .flag-banner-checkered {
+      background: repeating-conic-gradient(#000 0% 25%, #fff 0% 50%) 50% / 20px 20px !important;
+      color: #000 !important;
+      font-weight: 900 !important;
+      text-shadow: 0 0 4px #fff, 0 0 8px #fff !important;
+    }
+
+    /* Landscape Mode (Fase 1: Item 15) */
+    @media (orientation: landscape) and (max-height: 520px) {
+      header { display: none !important; }
+      #bottom-navbar { display: none !important; }
+      #tab-track-control { padding: 4px !important; padding-bottom: 4px !important; }
+      .landscape-compact-hide { display: none !important; }
+    }
   </style>
 </head>
 <body class="h-full w-full flex flex-col overflow-hidden bg-[#08090e] text-slate-100">
@@ -464,16 +525,36 @@
     <section id="tab-track-control" class="h-full flex flex-col overflow-y-auto no-scrollbar p-3.5 space-y-4 hidden" style="padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);">
       
       <!-- ================= 🏎️ LIVE COCKPIT HUD INSTRUMENT CLUSTER ================= -->
-      <div class="relative rounded-2xl bg-gradient-to-b from-slate-900 to-black p-3.5 border border-brand-border shadow-2xl overflow-hidden">
+      <div class="relative rounded-2xl bg-gradient-to-b from-slate-900 to-black p-3.5 border border-brand-border shadow-2xl overflow-hidden cockpit-card" id="cockpit-hud-main">
         
-        <!-- Top Status Bar & Simulation Switch -->
+        <!-- Top Status Bar, Simulation Switch & Quick HUD Mode Controls -->
         <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/80">
           <div class="flex items-center gap-2">
             <span id="track-status-dot" class="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></span>
             <span id="track-status-badge" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">TELEMETRIA AO VIVO</span>
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
+            <!-- Botão OLED Puro (Item 8) -->
+            <button 
+              id="btn-toggle-oled" 
+              onclick="toggleOledMode()" 
+              title="Modo Noturno OLED Puro"
+              class="px-2 py-0.5 rounded text-[10px] font-bold border border-slate-700 bg-slate-800/80 text-slate-300 hover:text-white active:scale-95 transition-all"
+            >
+              <span id="oled-label">🌑 OLED</span>
+            </button>
+
+            <!-- Alternar Visor Analógico / Digital (Item 6) -->
+            <button 
+              id="btn-toggle-hud-mode" 
+              onclick="toggleHudGaugeMode()" 
+              title="Alternar Digital F1 / Tacómetro Analógico"
+              class="px-2 py-0.5 rounded text-[10px] font-bold border border-slate-700 bg-slate-800/80 text-slate-300 hover:text-white active:scale-95 transition-all"
+            >
+              <span id="hud-mode-label">⏱️ Analógico</span>
+            </button>
+
             <!-- Botão Demo / Simulação de Telemetria -->
             <button 
               id="btn-demo-telemetry" 
@@ -482,12 +563,17 @@
             >
               <span id="demo-telemetry-label">🎮 Testar HUD</span>
             </button>
-            <span id="hud-car-name" class="text-[10px] font-bold text-brand-red truncate max-w-[120px]">Assetto Corsa</span>
           </div>
         </div>
 
+        <!-- 🏁 BANDEIRAS DE PISTA INTERATIVAS (Item 7) -->
+        <div id="hud-flag-alert" class="hidden w-full py-1.5 px-3 rounded-xl mb-2 text-center text-xs font-black tracking-wider uppercase flex items-center justify-center gap-2 shadow-lg transition-all">
+          <span id="hud-flag-icon">⚠️</span>
+          <span id="hud-flag-text">BANDEIRA AMARELA NO SETOR - REDUZA VELOCIDADE</span>
+        </div>
+
         <!-- 🚥 BARRA DE SHIFT LIGHTS (16 LEDs F1 / GT3) -->
-        <div class="w-full flex items-center justify-between gap-1 px-1 py-1 bg-black/60 rounded-xl border border-slate-800 mb-3" id="shift-lights-bar">
+        <div class="w-full flex items-center justify-between gap-1 px-1 py-1 bg-black/60 rounded-xl border border-slate-800 mb-2.5" id="shift-lights-bar">
           <div class="shift-led off flex-1 h-2 rounded-full" id="led-0"></div>
           <div class="shift-led off flex-1 h-2 rounded-full" id="led-1"></div>
           <div class="shift-led off flex-1 h-2 rounded-full" id="led-2"></div>
@@ -506,8 +592,24 @@
           <div class="shift-led off flex-1 h-2 rounded-full" id="led-15"></div>
         </div>
 
-        <!-- INSTRUMENTO CENTRAL: MUDANÇA (GEAR) & VELOCÍMETRO -->
-        <div class="grid grid-cols-12 gap-2.5 items-center my-1">
+        <!-- DELTA LIVE & MICRO-SETORES (Items 2 e 12) -->
+        <div class="flex items-center justify-between px-2 py-1 bg-black/50 rounded-lg border border-slate-800/80 mb-2 text-[10px] font-mono">
+          <div class="flex items-center gap-1.5">
+            <span class="text-slate-400">DELTA:</span>
+            <span id="hud-delta-val" class="font-bold text-xs px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">-0.00s</span>
+          </div>
+
+          <!-- Micro-Setores (Item 12) -->
+          <div class="flex items-center gap-1">
+            <span class="text-[9px] text-slate-500 uppercase mr-0.5">SETORES:</span>
+            <span id="sector-1-badge" class="px-1.5 py-0.2 rounded font-bold text-[9px] bg-slate-800 text-slate-400 border border-slate-700">S1</span>
+            <span id="sector-2-badge" class="px-1.5 py-0.2 rounded font-bold text-[9px] bg-slate-800 text-slate-400 border border-slate-700">S2</span>
+            <span id="sector-3-badge" class="px-1.5 py-0.2 rounded font-bold text-[9px] bg-slate-800 text-slate-400 border border-slate-700">S3</span>
+          </div>
+        </div>
+
+        <!-- INSTRUMENTO PRINCIPAL: VISTA DIGITAL F1 / GT3 -->
+        <div id="hud-view-digital" class="grid grid-cols-12 gap-2.5 items-center my-1">
           
           <!-- Pedal Throttle & Brake Bars (Esquerda) -->
           <div class="col-span-3 flex flex-col justify-center space-y-2">
@@ -542,11 +644,13 @@
             </div>
           </div>
 
-          <!-- Mostrador Central Gigante: MUDANÇA (GEAR) -->
+          <!-- Mostrador Central Gigante: MUDANÇA (GEAR) com Alerta de Corte / Rev Limiter (Item 10) -->
           <div class="col-span-4 flex flex-col items-center justify-center">
-            <div class="relative w-20 h-20 rounded-2xl bg-black border-2 border-brand-red flex items-center justify-center shadow-xl shadow-brand-red/30" id="hud-gear-container">
+            <div class="relative w-20 h-20 rounded-2xl bg-black border-2 border-brand-red flex items-center justify-center shadow-xl shadow-brand-red/30 transition-all" id="hud-gear-container">
               <span id="hud-gear-num" class="font-racing text-6xl font-black text-white leading-none tracking-tight">N</span>
-              <span class="absolute bottom-1 text-[8px] font-mono font-bold text-slate-400 uppercase tracking-widest">GEAR</span>
+              <span class="absolute bottom-1 text-[8px] font-mono font-bold text-slate-400 uppercase tracking-widest" id="hud-gear-label">GEAR</span>
+              <!-- Indicador de Corte / Anti-lag (Item 10) -->
+              <span id="hud-rev-cutoff-alert" class="hidden absolute -top-2.5 px-1.5 py-0.2 rounded-full bg-red-600 text-[8px] font-black text-white uppercase tracking-wider animate-bounce">CORTE</span>
             </div>
             <div class="mt-1 text-center font-mono-tech text-xs text-slate-400">
               <span id="hud-rpm-num" class="text-white font-bold text-sm">0</span> RPM
@@ -560,7 +664,7 @@
               <span class="text-xs font-mono font-bold text-slate-400 block -mt-1">KM/H</span>
             </div>
 
-            <div class="mt-2.5 text-right space-y-0.5">
+            <div class="mt-2 text-right space-y-0.5">
               <div class="text-[10px] font-mono text-slate-400">
                 COMBUSTÍVEL: <span id="hud-fuel-num" class="text-amber-400 font-bold">45.0 L</span>
               </div>
@@ -574,42 +678,193 @@
 
         </div>
 
-        <!-- MATRIZ DE CALOR DOS 4 PNEUS (FL, FR, RL, RR) & VOLTAS -->
-        <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800/80">
+        <!-- INSTRUMENTO ALTERNATIVO: TACÓMETRO ANALÓGICO COM AGULHA (Item 6) -->
+        <div id="hud-view-analog" class="hidden flex flex-col items-center justify-center py-1">
+          <canvas id="analog-tachometer-canvas" width="280" height="150" class="mx-auto"></canvas>
+          <div class="flex items-center justify-center gap-6 mt-1 font-racing text-lg font-black">
+            <div><span class="text-xs font-mono text-slate-400 block -mb-1">VELOCIDADE</span><span id="analog-speed-num" class="text-brand-cyan text-2xl">0</span> <span class="text-xs font-mono text-slate-400">KM/H</span></div>
+            <div class="px-3 py-1 rounded-xl bg-black border border-brand-red"><span class="text-xs font-mono text-slate-400 block -mb-1">MUDANÇA</span><span id="analog-gear-num" class="text-white text-2xl">N</span></div>
+            <div><span class="text-xs font-mono text-slate-400 block -mb-1">ROTAÇÃO</span><span id="analog-rpm-num" class="text-amber-400 text-2xl">0</span> <span class="text-xs font-mono text-slate-400">RPM</span></div>
+          </div>
+        </div>
+
+        <!-- TELEMETRIA DINÂMICA: G-BOWL 2D, ÂNGULO DE DIREÇÃO & VELOCIDADE DE CURVA (Items 1, 9, 14) -->
+        <div class="grid grid-cols-12 gap-2 mt-2 pt-2 border-t border-slate-800/80 items-stretch">
           
-          <!-- Pneus Heat Map -->
-          <div class="p-2 bg-black/60 rounded-xl border border-slate-800/90 flex flex-col justify-between">
-            <div class="flex justify-between text-[9px] font-bold text-slate-400 uppercase">
-              <span>TEMPERATURA PNEUS</span>
-              <span class="text-emerald-400">ÓTIMO: ~85°C</span>
+          <!-- G-Bowl 2D Canvas (Item 1) -->
+          <div class="col-span-5 p-2 bg-black/60 rounded-xl border border-slate-800 flex flex-col items-center justify-between">
+            <div class="w-full flex justify-between items-center text-[9px] font-bold text-slate-400 uppercase">
+              <span>G-BOWL (FORÇA G)</span>
+              <span id="hud-g-total" class="text-brand-cyan font-mono font-bold">0.00 G</span>
+            </div>
+            
+            <div class="relative my-1">
+              <canvas id="g-force-canvas" width="90" height="90" class="rounded-full bg-slate-950 border border-slate-800 shadow-inner"></canvas>
             </div>
 
-            <div class="grid grid-cols-2 gap-1.5 mt-1 text-center font-mono-tech text-[10px]">
-              <div class="p-1 rounded bg-slate-900 border border-slate-800" id="tyre-fl">
-                <span class="text-[8px] text-slate-500 block">FL (F-Esq)</span>
-                <span id="temp-fl" class="font-bold text-slate-300">24°C</span>
-              </div>
-              <div class="p-1 rounded bg-slate-900 border border-slate-800" id="tyre-fr">
-                <span class="text-[8px] text-slate-500 block">FR (F-Dir)</span>
-                <span id="temp-fr" class="font-bold text-slate-300">24°C</span>
-              </div>
-              <div class="p-1 rounded bg-slate-900 border border-slate-800" id="tyre-rl">
-                <span class="text-[8px] text-slate-500 block">RL (T-Esq)</span>
-                <span id="temp-rl" class="font-bold text-slate-300">24°C</span>
-              </div>
-              <div class="p-1 rounded bg-slate-900 border border-slate-800" id="tyre-rr">
-                <span class="text-[8px] text-slate-500 block">RR (T-Dir)</span>
-                <span id="temp-rr" class="font-bold text-slate-300">24°C</span>
-              </div>
+            <div class="w-full flex justify-between text-[8px] font-mono text-slate-400">
+              <span>LAT: <strong id="hud-g-lat" class="text-white">0.00</strong></span>
+              <span>LONG: <strong id="hud-g-long" class="text-white">0.00</strong></span>
             </div>
           </div>
 
-          <!-- Cronómetro de Voltas & Posição -->
+          <!-- Ângulo de Direção (Item 9) & Velocidade Apex / Exit (Item 14) -->
+          <div class="col-span-7 flex flex-col justify-between space-y-1.5">
+            
+            <!-- Volante / Steering Angle Gauge (Item 9) -->
+            <div class="p-2 bg-black/60 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="w-7 h-7 flex items-center justify-center transition-transform duration-75" id="hud-steering-wheel">
+                  <svg class="w-6 h-6 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="9"/>
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M3 12h6m6 0h6m-9 3v6"/>
+                  </svg>
+                </div>
+                <div>
+                  <span class="text-[8px] text-slate-400 font-bold uppercase block">ÂNGULO DIREÇÃO</span>
+                  <span id="hud-steer-deg" class="text-xs font-mono font-bold text-white">0.0°</span>
+                </div>
+              </div>
+
+              <div id="hud-drift-badge" class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-800 text-slate-500 border border-slate-700">
+                NEUTRO
+              </div>
+            </div>
+
+            <!-- Velocidade de Curva: Apex & Exit Speed (Item 14) -->
+            <div class="p-2 bg-black/60 rounded-xl border border-slate-800 flex items-center justify-between font-mono text-[9px]">
+              <div>
+                <span class="text-slate-500 block text-[8px]">APEX (MIN):</span>
+                <span id="hud-apex-speed" class="font-bold text-amber-400 text-xs">-- km/h</span>
+              </div>
+              <div class="text-right">
+                <span class="text-slate-500 block text-[8px]">SAÍDA (EXIT):</span>
+                <span id="hud-exit-speed" class="font-bold text-emerald-400 text-xs">-- km/h</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- MATRIZ DE CALOR DOS 4 PNEUS (FL, FR, RL, RR) COM PRESSÕES, DESGASTE & TRAVÕES (Items 3, 4, 5) -->
+        <div class="mt-2 pt-2 border-t border-slate-800/80">
+          <div class="flex justify-between items-center text-[9px] font-bold text-slate-400 uppercase mb-1.5">
+            <span>DINÂMICA DOS 4 PNEUS & TRAVÕES</span>
+            <span class="text-emerald-400">PRESSÃO IDEAL: 27-29 PSI</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-1.5 font-mono-tech text-[10px]">
+            
+            <!-- FL (Dianteiro Esquerdo) -->
+            <div class="p-1.5 rounded-xl bg-slate-900 border border-slate-800 transition-all" id="tyre-fl">
+              <div class="flex justify-between items-center text-[8px] text-slate-400 font-bold">
+                <span>FL (F-Esq)</span>
+                <span id="psi-fl" class="text-slate-300">28.0 PSI</span>
+              </div>
+              <div class="flex justify-between items-baseline mt-0.5">
+                <span id="temp-fl" class="font-bold text-sm text-white">24°C</span>
+                <span id="wear-fl" class="text-[9px] text-emerald-400 font-bold">100%</span>
+              </div>
+              <div class="w-full h-1 bg-slate-950 rounded-full mt-1 overflow-hidden">
+                <div id="wear-bar-fl" class="h-full bg-emerald-500 rounded-full" style="width: 100%;"></div>
+              </div>
+              <div class="flex justify-between items-center text-[8px] mt-1 pt-1 border-t border-slate-800/60">
+                <span class="text-slate-500">DISCO:</span>
+                <span id="brake-fl" class="font-bold text-slate-300">150°C</span>
+              </div>
+            </div>
+
+            <!-- FR (Dianteiro Direito) -->
+            <div class="p-1.5 rounded-xl bg-slate-900 border border-slate-800 transition-all" id="tyre-fr">
+              <div class="flex justify-between items-center text-[8px] text-slate-400 font-bold">
+                <span>FR (F-Dir)</span>
+                <span id="psi-fr" class="text-slate-300">28.0 PSI</span>
+              </div>
+              <div class="flex justify-between items-baseline mt-0.5">
+                <span id="temp-fr" class="font-bold text-sm text-white">24°C</span>
+                <span id="wear-fr" class="text-[9px] text-emerald-400 font-bold">100%</span>
+              </div>
+              <div class="w-full h-1 bg-slate-950 rounded-full mt-1 overflow-hidden">
+                <div id="wear-bar-fr" class="h-full bg-emerald-500 rounded-full" style="width: 100%;"></div>
+              </div>
+              <div class="flex justify-between items-center text-[8px] mt-1 pt-1 border-t border-slate-800/60">
+                <span class="text-slate-500">DISCO:</span>
+                <span id="brake-fr" class="font-bold text-slate-300">150°C</span>
+              </div>
+            </div>
+
+            <!-- RL (Traseiro Esquerdo) -->
+            <div class="p-1.5 rounded-xl bg-slate-900 border border-slate-800 transition-all" id="tyre-rl">
+              <div class="flex justify-between items-center text-[8px] text-slate-400 font-bold">
+                <span>RL (T-Esq)</span>
+                <span id="psi-rl" class="text-slate-300">28.0 PSI</span>
+              </div>
+              <div class="flex justify-between items-baseline mt-0.5">
+                <span id="temp-rl" class="font-bold text-sm text-white">24°C</span>
+                <span id="wear-rl" class="text-[9px] text-emerald-400 font-bold">100%</span>
+              </div>
+              <div class="w-full h-1 bg-slate-950 rounded-full mt-1 overflow-hidden">
+                <div id="wear-bar-rl" class="h-full bg-emerald-500 rounded-full" style="width: 100%;"></div>
+              </div>
+              <div class="flex justify-between items-center text-[8px] mt-1 pt-1 border-t border-slate-800/60">
+                <span class="text-slate-500">DISCO:</span>
+                <span id="brake-rl" class="font-bold text-slate-300">120°C</span>
+              </div>
+            </div>
+
+            <!-- RR (Traseiro Direito) -->
+            <div class="p-1.5 rounded-xl bg-slate-900 border border-slate-800 transition-all" id="tyre-rr">
+              <div class="flex justify-between items-center text-[8px] text-slate-400 font-bold">
+                <span>RR (T-Dir)</span>
+                <span id="psi-rr" class="text-slate-300">28.0 PSI</span>
+              </div>
+              <div class="flex justify-between items-baseline mt-0.5">
+                <span id="temp-rr" class="font-bold text-sm text-white">24°C</span>
+                <span id="wear-rr" class="text-[9px] text-emerald-400 font-bold">100%</span>
+              </div>
+              <div class="w-full h-1 bg-slate-950 rounded-full mt-1 overflow-hidden">
+                <div id="wear-bar-rr" class="h-full bg-emerald-500 rounded-full" style="width: 100%;"></div>
+              </div>
+              <div class="flex justify-between items-center text-[8px] mt-1 pt-1 border-t border-slate-800/60">
+                <span class="text-slate-500">DISCO:</span>
+                <span id="brake-rr" class="font-bold text-slate-300">120°C</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- CONSUMO POR VOLTA & HISTÓRICO DE VOLTAS (Items 11 e 13) -->
+        <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800/80">
+          
+          <!-- Calculadora de Consumo (Item 11) -->
+          <div class="p-2 bg-black/60 rounded-xl border border-slate-800/90 flex flex-col justify-between font-mono text-xs">
+            <span class="text-[9px] font-bold text-slate-400 block uppercase">COMBUSTÍVEL / VOLTA</span>
+            <div class="flex justify-between items-baseline mt-0.5">
+              <span class="text-[10px] text-slate-400">MÉDIA:</span>
+              <span id="hud-fuel-per-lap" class="font-bold text-amber-400 text-xs">~2.2 L/v</span>
+            </div>
+            <div class="flex justify-between items-baseline mt-0.5">
+              <span class="text-[10px] text-slate-400">ESTIMATIVA:</span>
+              <span id="hud-fuel-laps-left" class="font-bold text-emerald-400 text-xs">~19 voltas</span>
+            </div>
+            <div class="mt-1 pt-1 border-t border-slate-800 text-[9px] text-slate-500 flex justify-between">
+              <span>STATUS:</span>
+              <span id="hud-fuel-status-tag" class="text-emerald-400 font-bold">TANQUE OK</span>
+            </div>
+          </div>
+
+          <!-- Cronómetro de Voltas & Histórico das Últimas Voltas (Item 13) -->
           <div class="p-2 bg-black/60 rounded-xl border border-slate-800/90 flex flex-col justify-between text-xs font-mono">
             <div>
-              <span class="text-[9px] font-bold text-slate-400 block uppercase">TEMPOS DE VOLTA</span>
+              <div class="flex justify-between items-center">
+                <span class="text-[9px] font-bold text-slate-400 block uppercase">TEMPOS</span>
+                <span class="text-[9px] text-slate-400">VOLTA: <strong id="hud-lap-count" class="text-white">0</strong></span>
+              </div>
               <div class="flex justify-between items-baseline mt-0.5">
-                <span class="text-[10px] text-slate-400">VOLTA ATUAL:</span>
+                <span class="text-[10px] text-slate-400">ATUAL:</span>
                 <span id="hud-lap-cur" class="font-bold text-white text-xs">--:--:---</span>
               </div>
               <div class="flex justify-between items-baseline mt-0.5">
@@ -618,9 +873,13 @@
               </div>
             </div>
 
-            <div class="flex justify-between items-center mt-1.5 pt-1 border-t border-slate-800 text-[10px]">
-              <span class="text-slate-400">VOLTAS: <strong id="hud-lap-count" class="text-white">0</strong></span>
-              <span class="px-1.5 py-0.2 rounded bg-brand-cyan/20 text-brand-cyan font-bold" id="hud-session-tag">STANDBY</span>
+            <!-- Gráfico Sparkline de Últimas 10 Voltas (Item 13) -->
+            <div class="mt-1 pt-1 border-t border-slate-800">
+              <div class="flex justify-between text-[8px] text-slate-400 mb-0.5">
+                <span>HISTÓRICO 10V</span>
+                <span id="hud-lap-consistency" class="text-brand-cyan">CONSISTÊNCIA: 98%</span>
+              </div>
+              <canvas id="lap-history-canvas" width="130" height="24" class="w-full h-6 rounded bg-black/80"></canvas>
             </div>
           </div>
 
