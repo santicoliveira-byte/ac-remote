@@ -559,6 +559,42 @@
         <button onclick="setServerTagFilter('Touge')" class="srv-tag-btn flex-none px-3 py-1 rounded-lg text-xs font-bold border border-slate-800 bg-slate-900/90 text-slate-400 hover:text-white" data-tag="Touge">⛰️ Touge</button>
       </div>
 
+      <!-- Barra Pro de Comunidade & Ferramentas Online (Fase 4: Itens 44, 45, 47, 48) -->
+      <div class="grid grid-cols-2 gap-2">
+        <!-- Botão Abrir Tabela de Classificação do Servidor (Item 47) -->
+        <button 
+          onclick="openServerLeaderboardModal()" 
+          class="py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 text-slate-200 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-md"
+        >
+          <span class="text-amber-400">🏆</span>
+          <span>LEADERBOARD LIVE</span>
+        </button>
+
+        <!-- Toggle Auto-Join quando Vagar Vaga (Item 44, 45) -->
+        <button 
+          id="btn-auto-join-toggle"
+          onclick="toggleAutoJoin()" 
+          class="py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-md"
+        >
+          <span id="auto-join-icon">🔔</span>
+          <span id="auto-join-label">AVISO DE VAGAS</span>
+        </button>
+      </div>
+
+      <!-- Atalhos Rápidos de Chat de Pista (Fase 4: Item 48) -->
+      <div class="p-2.5 rounded-xl bg-black/60 border border-slate-800 space-y-1.5">
+        <div class="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+          <span>💬 CHAT RÁPIDO NO JOGO (1 TOQUE)</span>
+          <span class="text-[9px] text-brand-cyan font-mono">Envia direto para o AC</span>
+        </div>
+        <div class="grid grid-cols-4 gap-1.5">
+          <button onclick="sendQuickChat('Sorry!')" class="py-1.5 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/60 text-slate-200 text-[10px] font-bold active:scale-95 transition-transform truncate">🙏 Sorry!</button>
+          <button onclick="sendQuickChat('Pass Left <-')" class="py-1.5 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/60 text-slate-200 text-[10px] font-bold active:scale-95 transition-transform truncate">⬅️ Pass Left</button>
+          <button onclick="sendQuickChat('Good Race! 🏁')" class="py-1.5 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/60 text-slate-200 text-[10px] font-bold active:scale-95 transition-transform truncate">🏁 Good Race</button>
+          <button onclick="sendQuickChat('Blue Flag ⚠️')" class="py-1.5 px-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/60 text-slate-200 text-[10px] font-bold active:scale-95 transition-transform truncate">🟦 Blue Flag</button>
+        </div>
+      </div>
+
       <!-- Lista de Servidores Favoritos -->
       <div id="servers-list" class="space-y-3">
         <!-- Renderizado dinamicamente via JS -->
@@ -941,6 +977,162 @@
 
       </div>
 
+      <!-- ================= 💨 FASE 7: FERRAMENTAS PARA DRIFT, TOUGE & SHUTOKO ================= -->
+      <div class="rounded-2xl bg-gradient-to-b from-slate-900 via-purple-950/20 to-black p-3.5 border border-purple-500/40 shadow-2xl space-y-3 cockpit-card" id="drift-touge-panel">
+        
+        <!-- Header com Modos: DRIFT / TOUGE / SHUTOKO -->
+        <div class="flex items-center justify-between pb-2 border-b border-purple-900/40">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">💨</span>
+            <div>
+              <div class="flex items-center gap-1.5 leading-none">
+                <h3 class="font-racing text-base font-black text-white tracking-wide uppercase">DRIFT, TOUGE & SHUTOKO PRO</h3>
+                <span class="text-[8px] font-bold px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 uppercase">CSP FX</span>
+              </div>
+              <p class="text-[9px] text-slate-400 font-medium">Pontuação de drift, batalhas touge e radar de autoestrada</p>
+            </div>
+          </div>
+          <!-- Seletor de Sub-Modo -->
+          <div class="flex p-0.5 rounded-lg bg-black/80 border border-slate-800 text-[9px] font-bold font-mono">
+            <button onclick="setSpecialMode('drift')" id="btn-mode-drift" class="px-2 py-0.5 rounded bg-purple-600 text-white">DRIFT</button>
+            <button onclick="setSpecialMode('touge')" id="btn-mode-touge" class="px-2 py-0.5 rounded text-slate-400 hover:text-white">TOUGE</button>
+            <button onclick="setSpecialMode('shutoko')" id="btn-mode-shutoko" class="px-2 py-0.5 rounded text-slate-400 hover:text-white">SHUTOKO</button>
+          </div>
+        </div>
+
+        <!-- 1. VISTA DRIFT: CALCULADOR DE PONTOS & MEDIDOR DE ÂNGULO (Itens 76, 77, 83) -->
+        <div id="special-view-drift" class="space-y-2.5">
+          <!-- Alerta de Sobreaquecimento dos Pneus Traseiros de Drift (Item 83) -->
+          <div id="drift-tyre-overheat-alert" class="hidden w-full py-1 px-2.5 rounded-lg bg-red-600/90 text-white text-[10px] font-black uppercase text-center flex items-center justify-center gap-1 animate-pulse">
+            <span>🔥</span> PNEUS TRASEIROS A COZER (>105°C) - PERDA DE TRAÇÃO & ADERÊNCIA!
+          </div>
+
+          <div class="grid grid-cols-12 gap-2 items-center">
+            <!-- Ângulo de Drift em Graus (Item 76) -->
+            <div class="col-span-5 p-2 rounded-xl bg-black/60 border border-purple-900/50 flex flex-col items-center justify-center text-center">
+              <span class="text-[8px] font-mono text-purple-300 uppercase font-bold">ÂNGULO DE DRIFT</span>
+              <div class="my-0.5 font-racing text-4xl font-black text-white" id="drift-angle-display">0°</div>
+              <span id="drift-zone-badge" class="px-2 py-0.2 rounded text-[8px] font-mono font-bold bg-slate-800 text-slate-400">EM LINHA</span>
+            </div>
+
+            <!-- Pontuação & Combo Multiplier (Item 77) -->
+            <div class="col-span-7 p-2 rounded-xl bg-black/60 border border-purple-900/50 flex flex-col justify-between font-mono">
+              <div class="flex items-center justify-between text-[9px]">
+                <span class="text-slate-400">PONTOS DE DRIFT:</span>
+                <span id="drift-combo-badge" class="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-black border border-amber-500/40 text-[9px]">COMBO x1</span>
+              </div>
+              <div class="text-2xl font-black text-brand-cyan tracking-wider my-0.5" id="drift-score-display">
+                0
+              </div>
+              <div class="flex items-center justify-between text-[8px] text-slate-400 pt-1 border-t border-slate-800">
+                <span>RECORDE: <strong class="text-purple-300" id="drift-high-score">14.250</strong></span>
+                <span>KM TOTAL: <strong class="text-white" id="drift-total-km">12.8 km</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- BOTÃO GIGANTE DE TRAVÃO DE MÃO VIRTUAL (E-BRAKE) (Item 81) -->
+          <div class="pt-0.5">
+            <button 
+              id="btn-virtual-handbrake"
+              onpointerdown="pressVirtualHandbrake(event)"
+              onpointerup="releaseVirtualHandbrake(event)"
+              onpointerleave="releaseVirtualHandbrake(event)"
+              class="w-full py-4 rounded-2xl bg-gradient-to-r from-red-600 via-pink-600 to-red-600 active:scale-95 text-white font-racing text-lg font-black tracking-widest uppercase shadow-xl shadow-red-950/80 border-2 border-red-400/50 flex items-center justify-center gap-2 select-none"
+            >
+              <span>🛑</span>
+              <span id="handbrake-btn-label">TRAVÃO DE MÃO (SEGURA)</span>
+              <span>🛑</span>
+            </button>
+            <span class="text-[8px] text-slate-500 block text-center mt-1">Aciona a barra de espaços no PC enquanto estiveres a segurar no botão.</span>
+          </div>
+
+          <!-- SELETOR DE MAPAS DE TURBO / ECU (Item 82) -->
+          <div class="p-2 rounded-xl bg-black/60 border border-slate-800 space-y-1">
+            <div class="flex items-center justify-between text-[9px] font-bold text-slate-400 uppercase">
+              <span>TURBO BOOST / MAPA ECU</span>
+              <span class="text-amber-400 font-mono" id="turbo-level-label">NÍVEL 100%</span>
+            </div>
+            <div class="grid grid-cols-4 gap-1 text-center font-mono text-[10px]">
+              <button onclick="setTurboLevel('1', '10%')" class="py-1 rounded bg-slate-900 border border-slate-800 hover:border-slate-600 text-slate-300 font-bold active:scale-95">10%</button>
+              <button onclick="setTurboLevel('4', '40%')" class="py-1 rounded bg-slate-900 border border-slate-800 hover:border-slate-600 text-slate-300 font-bold active:scale-95">40%</button>
+              <button onclick="setTurboLevel('7', '70%')" class="py-1 rounded bg-slate-900 border border-slate-800 hover:border-slate-600 text-slate-300 font-bold active:scale-95">70%</button>
+              <button onclick="setTurboLevel('0', '100%')" class="py-1 rounded bg-amber-600/30 border border-amber-500 text-amber-300 font-bold active:scale-95">100%</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. VISTA TOUGE: CRONÓMETRO DE DESCIDA / SUBIDA & GAP BATTLE (Item 78) -->
+        <div id="special-view-touge" class="hidden space-y-2.5">
+          <div class="p-2.5 rounded-xl bg-black/60 border border-slate-800 space-y-2 font-mono">
+            <div class="flex items-center justify-between text-xs">
+              <span class="text-slate-400 font-bold uppercase">BATALHA TOUGE (GAP)</span>
+              <span id="touge-gap-badge" class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">-0.34s LÍDER</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5 text-center text-[10px]">
+              <div class="p-1.5 rounded-lg bg-slate-900 border border-slate-800">
+                <span class="text-slate-500 block text-[8px]">SETOR 1:</span>
+                <span class="font-bold text-white">00:42.15</span>
+              </div>
+              <div class="p-1.5 rounded-lg bg-slate-900 border border-slate-800">
+                <span class="text-slate-500 block text-[8px]">SETOR 2:</span>
+                <span class="font-bold text-white">00:38.90</span>
+              </div>
+              <div class="p-1.5 rounded-lg bg-slate-900 border border-slate-800">
+                <span class="text-slate-500 block text-[8px]">SETOR 3:</span>
+                <span class="font-bold text-emerald-400">00:44.20</span>
+              </div>
+            </div>
+            <div class="flex items-center justify-between text-[9px] pt-1 border-t border-slate-800 text-slate-400">
+              <span>MELHOR DESCIDA: <strong class="text-purple-300">02:05.25</strong></span>
+              <span>PISTA: <strong class="text-white">Gunsai Touge</strong></span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="startTougeRun('Downhill')" class="py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-racing text-xs font-bold uppercase active:scale-95 transition-all">
+              ⛰️ LARGADA DOWNHILL
+            </button>
+            <button onclick="startTougeRun('Uphill')" class="py-2.5 rounded-xl bg-slate-800 text-slate-200 font-racing text-xs font-bold uppercase active:scale-95 transition-all">
+              🏔️ LARGADA UPHILL
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. VISTA SHUTOKO: RADAR DE TRÁFEGO, VELOCIDADE MÁXIMA & TELEPORTE (Itens 79, 80, 84, 85) -->
+        <div id="special-view-shutoko" class="hidden space-y-2.5">
+          <div class="grid grid-cols-2 gap-2">
+            <!-- Top Speed Trap (Item 80) -->
+            <div class="p-2.5 rounded-xl bg-black/60 border border-slate-800 flex flex-col justify-between font-mono">
+              <span class="text-[8px] text-slate-400 uppercase font-bold">RADAR VELOCIDADE MÁXIMA</span>
+              <div class="text-xl font-black text-brand-cyan my-1" id="shutoko-top-speed">284.2 km/h</div>
+              <span class="text-[8px] text-slate-500">Reta Wangan / Bayshore</span>
+            </div>
+
+            <!-- Overtakes Counter (Item 79) -->
+            <div class="p-2.5 rounded-xl bg-black/60 border border-slate-800 flex flex-col justify-between font-mono">
+              <span class="text-[8px] text-slate-400 uppercase font-bold">CORTES DE TRÁFEGO</span>
+              <div class="text-xl font-black text-amber-400 my-1" id="shutoko-overtakes">18</div>
+              <span class="text-[8px] text-emerald-400">Tráfego C1 Intenso</span>
+            </div>
+          </div>
+
+          <!-- Atalhos Rápidos de Ponto de Encontro (Item 84) -->
+          <div class="p-2 rounded-xl bg-black/60 border border-slate-800 space-y-1.5">
+            <span class="text-[9px] font-bold text-slate-400 uppercase block">SPAWN / PONTOS DE ENCONTRO</span>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button onclick="teleportShutoko('Shibaura PA')" class="py-2 px-2 rounded-lg bg-slate-900 border border-slate-700/80 text-white text-[10px] font-bold active:scale-95 transition-all text-center">
+                📍 Shibaura PA
+              </button>
+              <button onclick="teleportShutoko('Daikoku Futo')" class="py-2 px-2 rounded-lg bg-slate-900 border border-slate-700/80 text-white text-[10px] font-bold active:scale-95 transition-all text-center">
+                📍 Daikoku PA
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
       <!-- ================= 🎮 VIRTUAL BUTTON BOX PARA SIM RIG ================= -->
 
       <!-- 1. BANCO DE CORRIDA & BOXES -->
@@ -1193,6 +1385,74 @@
         </div>
       </div>
 
+      <!-- 6. BANCO MULTIMÉDIA, DISCORD, SHADOWPLAY & SIM RIG (Fase 8: Itens 86-93) -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+            <span>🎧</span> DISCORD, MÚSICA & SIM RIG:
+          </span>
+          <span class="text-[9px] font-mono text-purple-400 font-semibold" id="sim-rig-pill">OpenRGB / Wind Sim Ready</span>
+        </div>
+
+        <div class="grid grid-cols-4 gap-2">
+          <!-- Discord Mute -->
+          <button 
+            onclick="sendTrackAction('discord_mute', '🎧 Microfone Discord alternado')"
+            class="py-2.5 px-1.5 rounded-xl bg-indigo-950/40 border border-indigo-700/50 hover:bg-indigo-900/50 text-indigo-200 active:scale-95 transition-all flex flex-col items-center justify-center text-center shadow-lg"
+          >
+            <span class="text-base">🎙️</span>
+            <span class="font-racing text-[10px] font-bold">DISCORD</span>
+            <span class="text-[8px] text-indigo-400/80 font-mono">Mute / Ctrl+Shift+M</span>
+          </button>
+
+          <!-- Spotify Play / Pause -->
+          <button 
+            onclick="sendTrackAction('media_play_pause', '🎵 Spotify: Play/Pause')"
+            class="py-2.5 px-1.5 rounded-xl bg-emerald-950/40 border border-emerald-700/50 hover:bg-emerald-900/50 text-emerald-200 active:scale-95 transition-all flex flex-col items-center justify-center text-center shadow-lg"
+          >
+            <span class="text-base">⏯️</span>
+            <span class="font-racing text-[10px] font-bold">SPOTIFY</span>
+            <span class="text-[8px] text-emerald-400/80 font-mono">Play / Pause</span>
+          </button>
+
+          <!-- Spotify Next Track -->
+          <button 
+            onclick="sendTrackAction('media_next', '⏭️ Spotify: Próxima Música')"
+            class="py-2.5 px-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 active:scale-95 transition-all flex flex-col items-center justify-center text-center shadow-lg"
+          >
+            <span class="text-base">⏭️</span>
+            <span class="font-racing text-[10px] font-bold">FAIXA +</span>
+            <span class="text-[8px] text-slate-400 font-mono">Next</span>
+          </button>
+
+          <!-- ShadowPlay 30s Clip -->
+          <button 
+            onclick="sendTrackAction('replay_clip', '🎬 Clip de 30s guardado no PC!')"
+            class="py-2.5 px-1.5 rounded-xl bg-brand-red/20 border border-brand-red/40 hover:bg-brand-red/30 text-white active:scale-95 transition-all flex flex-col items-center justify-center text-center shadow-lg"
+          >
+            <span class="text-base">🎬</span>
+            <span class="font-racing text-[10px] font-bold">GRAVAR CLIP</span>
+            <span class="text-[8px] text-brand-red font-mono">Alt + F10</span>
+          </button>
+        </div>
+
+        <!-- Custom Macro Key & Sim Rig Wind/RGB Bar -->
+        <div class="grid grid-cols-2 gap-2 pt-0.5">
+          <button 
+            onclick="openCustomMacroModal()" 
+            class="py-2 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+          >
+            <span>⌨️</span>
+            <span>ATALHO PERSONALIZADO</span>
+          </button>
+
+          <div class="p-2 rounded-xl bg-black/60 border border-slate-800 flex items-center justify-between text-[10px] font-mono">
+            <span class="text-slate-400">VENTO / WIND:</span>
+            <span id="wind-sim-pct-label" class="font-bold text-brand-cyan">0% (0 km/h)</span>
+          </div>
+        </div>
+      </div>
+
       <!-- ================= ⛽ FASE 2: ESTRATÉGIA DE BOXES, COMBUSTÍVEL & PNEUS ================= -->
       <div class="bg-gradient-to-b from-slate-900 to-black p-3.5 rounded-2xl border border-brand-border space-y-3.5 shadow-2xl cockpit-card" id="pit-strategy-container">
         
@@ -1419,7 +1679,7 @@
         <p class="text-xs text-slate-400">Temas neon, efeitos de som e ligação com o PC</p>
       </div>
 
-      <!-- SELETOR DE TEMAS NEON GAMING -->
+      <!-- SELETOR DE TEMAS NEON GAMING (Fase 6: Itens 69, 70) -->
       <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3">
         <div class="flex items-center justify-between">
           <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1428,43 +1688,58 @@
           <span id="theme-active-label" class="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-red/20 text-brand-red font-bold">Scuderia Red</span>
         </div>
 
-        <div class="grid grid-cols-5 gap-2">
+        <div class="grid grid-cols-6 gap-1.5 text-center">
           <!-- Vermelho Ferrari -->
-          <button onclick="setCockpitTheme('red')" class="theme-btn p-2 rounded-xl border-2 border-red-500 bg-red-950/60 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Scuderia Red">
-            <span class="w-5 h-5 rounded-full bg-red-500 shadow-md shadow-red-500/50"></span>
-            <span class="text-[9px] font-bold text-slate-200">Red</span>
+          <button onclick="setCockpitTheme('red')" class="theme-btn p-1.5 rounded-xl border-2 border-red-500 bg-red-950/60 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Scuderia Red">
+            <span class="w-4 h-4 rounded-full bg-red-500 shadow-md shadow-red-500/50"></span>
+            <span class="text-[8px] font-bold text-slate-200">Red</span>
           </button>
-          <!-- Ciano Alpine/BMW -->
-          <button onclick="setCockpitTheme('cyan')" class="theme-btn p-2 rounded-xl border border-slate-800 bg-cyan-950/40 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Alpine Cyan">
-            <span class="w-5 h-5 rounded-full bg-cyan-400 shadow-md shadow-cyan-400/50"></span>
-            <span class="text-[9px] font-bold text-slate-200">Cyan</span>
+          <!-- Ciano Tokyo Neon -->
+          <button onclick="setCockpitTheme('cyan')" class="theme-btn p-1.5 rounded-xl border border-slate-800 bg-cyan-950/40 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Tokyo Cyan">
+            <span class="w-4 h-4 rounded-full bg-cyan-400 shadow-md shadow-cyan-400/50"></span>
+            <span class="text-[8px] font-bold text-slate-200">Tokyo</span>
           </button>
           <!-- Verde Aston Martin -->
-          <button onclick="setCockpitTheme('green')" class="theme-btn p-2 rounded-xl border border-slate-800 bg-emerald-950/40 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Racing Green">
-            <span class="w-5 h-5 rounded-full bg-emerald-500 shadow-md shadow-emerald-500/50"></span>
-            <span class="text-[9px] font-bold text-slate-200">Green</span>
+          <button onclick="setCockpitTheme('green')" class="theme-btn p-1.5 rounded-xl border border-slate-800 bg-emerald-950/40 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Racing Green">
+            <span class="w-4 h-4 rounded-full bg-emerald-500 shadow-md shadow-emerald-500/50"></span>
+            <span class="text-[8px] font-bold text-slate-200">Green</span>
           </button>
           <!-- Amarelo Modena -->
-          <button onclick="setCockpitTheme('yellow')" class="theme-btn p-2 rounded-xl border border-slate-800 bg-amber-950/40 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Giallo Modena">
-            <span class="w-5 h-5 rounded-full bg-amber-400 shadow-md shadow-amber-400/50"></span>
-            <span class="text-[9px] font-bold text-slate-200">Giallo</span>
+          <button onclick="setCockpitTheme('yellow')" class="theme-btn p-1.5 rounded-xl border border-slate-800 bg-amber-950/40 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Giallo Modena">
+            <span class="w-4 h-4 rounded-full bg-amber-400 shadow-md shadow-amber-400/50"></span>
+            <span class="text-[8px] font-bold text-slate-200">Giallo</span>
           </button>
-          <!-- Roxo Cyber Drift -->
-          <button onclick="setCockpitTheme('purple')" class="theme-btn p-2 rounded-xl border border-slate-800 bg-purple-950/40 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Cyber Drift">
-            <span class="w-5 h-5 rounded-full bg-purple-500 shadow-md shadow-purple-500/50"></span>
-            <span class="text-[9px] font-bold text-slate-200">Cyber</span>
+          <!-- Roxo Midnight Touge -->
+          <button onclick="setCockpitTheme('purple')" class="theme-btn p-1.5 rounded-xl border border-slate-800 bg-purple-950/40 flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Midnight Purple">
+            <span class="w-4 h-4 rounded-full bg-purple-500 shadow-md shadow-purple-500/50"></span>
+            <span class="text-[8px] font-bold text-slate-200">Purple</span>
           </button>
+          <!-- Pure OLED Absolute Black -->
+          <button onclick="toggleOledMode()" class="theme-btn p-1.5 rounded-xl border border-slate-800 bg-black flex flex-col items-center gap-1 active:scale-95 transition-transform" title="Pure OLED #000000">
+            <span class="w-4 h-4 rounded-full bg-neutral-900 border border-slate-700 shadow-md"></span>
+            <span class="text-[8px] font-bold text-slate-300">OLED</span>
+          </button>
+        </div>
+
+        <!-- Dimmer de Brilho do Ecrã para Noturnas (Fase 6: Item 71) -->
+        <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+          <span class="text-slate-400 text-[11px] font-semibold">Brilho Noturno do Telemóvel:</span>
+          <div class="flex items-center gap-1 font-mono text-[10px]">
+            <button onclick="setScreenDimmer(1.0)" class="dim-btn px-2 py-0.5 rounded bg-brand-red text-white font-bold" data-dim="1.0">100%</button>
+            <button onclick="setScreenDimmer(0.75)" class="dim-btn px-2 py-0.5 rounded bg-slate-800 text-slate-300" data-dim="0.75">75%</button>
+            <button onclick="setScreenDimmer(0.45)" class="dim-btn px-2 py-0.5 rounded bg-slate-800 text-slate-300" data-dim="0.45">45%</button>
+          </div>
         </div>
       </div>
 
-      <!-- EFEITOS SONOROS DE CORRIDA & HAPTICS -->
+      <!-- EFEITOS SONOROS DE CORRIDA & HAPTICS (Fase 6: Itens 66, 67, 68, 72) -->
       <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-              <span>🔊</span> EFEITOS DE ÁUDIO & SOM F1
+              <span>🔊</span> ÁUDIO RACING & ATMOSFERA
             </h3>
-            <p class="text-[10px] text-slate-400 mt-0.5">Som de patilhas de volante, arranque de motor e rádio dos boxes</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">Sons de patilhas, limitador corte e vento dinâmico</p>
           </div>
           <button 
             id="btn-settings-sound-toggle" 
@@ -1473,6 +1748,67 @@
           >
             LIGADO
           </button>
+        </div>
+
+        <!-- Feedback Háptico / Vibração Tátil no Telemóvel (Itens 66, 67, 68) -->
+        <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+          <div>
+            <span class="text-xs font-bold text-slate-200 block">Feedback Háptico (Vibração Tátil)</span>
+            <span class="text-[10px] text-slate-400">Vibra nas travagens de ABS e subviragem</span>
+          </div>
+          <button 
+            onclick="testHapticFeedback()" 
+            class="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-mono font-bold active:scale-95 transition-all"
+          >
+            📳 TESTAR
+          </button>
+        </div>
+      </div>
+
+      <!-- WAKE-ON-LAN & BACKUP EM NUVEM (Fase 9: Itens 94, 96, 99) -->
+      <div class="bg-brand-card p-4 rounded-2xl border border-brand-border space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+            <span>⚡</span> WAKE-ON-LAN & BACKUP
+          </h3>
+          <span class="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">REDE PRO</span>
+        </div>
+
+        <div class="space-y-2">
+          <!-- Wake-on-LAN -->
+          <div>
+            <label class="block text-[11px] text-slate-400 mb-1">Ligar PC por Wake-on-LAN (MAC do PC):</label>
+            <div class="flex gap-1.5">
+              <input 
+                type="text" 
+                id="input-wol-mac" 
+                placeholder="Ex: 00:1A:2B:3C:4D:5E" 
+                class="flex-1 bg-slate-900 text-xs text-white rounded-xl px-3 py-2 border border-slate-800 font-mono focus:border-brand-red focus:outline-none"
+              >
+              <button 
+                onclick="triggerWakeOnLan()" 
+                class="px-3 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-500 text-white font-racing text-xs font-bold uppercase active:scale-95 transition-transform"
+              >
+                LIGAR PC
+              </button>
+            </div>
+          </div>
+
+          <!-- Backup JSON -->
+          <div class="pt-2 border-t border-slate-800 flex gap-2">
+            <button 
+              onclick="downloadConfigBackup()" 
+              class="flex-1 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-xs font-bold hover:text-white active:scale-95 transition-all flex items-center justify-center gap-1"
+            >
+              <span>📥</span> EXPORTAR BACKUP
+            </button>
+            <button 
+              onclick="openDiagnosticsModal()" 
+              class="flex-1 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 text-xs font-bold hover:text-white active:scale-95 transition-all flex items-center justify-center gap-1"
+            >
+              <span>📊</span> DIAGNÓSTICO PC
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1905,6 +2241,143 @@
         </button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ================= MODAL LEADERBOARD DO SERVIDOR (Fase 4: Item 47) ================= -->
+  <div id="modal-server-leaderboard" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 hidden transition-all">
+    <div class="w-full max-w-lg bg-gradient-to-b from-slate-900 to-black border border-brand-border rounded-2xl p-4 shadow-2xl space-y-3.5 max-h-[90vh] overflow-y-auto no-scrollbar">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🏆</span>
+          <div>
+            <h3 class="font-racing text-lg font-black text-white tracking-wide">LEADERBOARD AO VIVO</h3>
+            <p class="text-[10px] text-slate-400" id="leaderboard-srv-subtitle">Melhores tempos de volta da sessão</p>
+          </div>
+        </div>
+        <button onclick="closeServerLeaderboardModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold">✕</button>
+      </div>
+
+      <!-- Tabela de Classificação -->
+      <div class="overflow-x-auto no-scrollbar">
+        <table class="w-full text-left font-mono text-xs">
+          <thead>
+            <tr class="text-[9px] text-slate-400 uppercase border-b border-slate-800 pb-1">
+              <th class="py-1">POS</th>
+              <th class="py-1">PILOTO</th>
+              <th class="py-1">CARRO</th>
+              <th class="py-1 text-right">TEMPO</th>
+              <th class="py-1 text-right">GAP</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-table-body" class="divide-y divide-slate-800/60">
+            <!-- Injetado via JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex gap-2 pt-1">
+        <button onclick="fetchServerLeaderboard()" class="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold active:scale-95 transition-all">
+          ↻ Atualizar Tempos
+        </button>
+        <button onclick="closeServerLeaderboardModal()" class="flex-1 py-2 rounded-xl bg-brand-red text-white text-xs font-bold font-racing uppercase tracking-wider active:scale-95 transition-all">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL ATALHO PERSONALIZADO / MACRO (Fase 8: Item 92) ================= -->
+  <div id="modal-custom-macro" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 hidden transition-all">
+    <div class="w-full max-w-sm bg-gradient-to-b from-slate-900 to-black border border-brand-border rounded-2xl p-4 shadow-2xl space-y-3">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">⌨️</span>
+          <div>
+            <h3 class="font-racing text-lg font-black text-white tracking-wide">ATALHO PERSONALIZADO</h3>
+            <p class="text-[10px] text-slate-400">Envia qualquer tecla ou atalho para o PC</p>
+          </div>
+        </div>
+        <button onclick="closeCustomMacroModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold">✕</button>
+      </div>
+
+      <div>
+        <label class="text-[9px] text-slate-400 font-bold uppercase block mb-1">Tecla / Combinação</label>
+        <input 
+          type="text" 
+          id="custom-macro-input" 
+          placeholder="Ex: ctrl+shift+o, f11, space, k..." 
+          class="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:outline-none focus:border-brand-red"
+        />
+      </div>
+
+      <!-- Quick Preset Chips -->
+      <div class="flex flex-wrap gap-1">
+        <button onclick="setMacroInput('f11')" class="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 font-mono">F11 (Full)</button>
+        <button onclick="setMacroInput('alt+f4')" class="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 font-mono">Alt+F4</button>
+        <button onclick="setMacroInput('ctrl+shift+s')" class="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 font-mono">Save</button>
+        <button onclick="setMacroInput('space')" class="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300 font-mono">Space</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button onclick="sendCustomMacro()" class="py-2.5 rounded-xl bg-brand-red text-white font-racing text-xs font-black uppercase tracking-wider active:scale-95 transition-all">
+          ⚡ Enviar Tecla
+        </button>
+        <button onclick="closeCustomMacroModal()" class="py-2.5 rounded-xl bg-slate-800 text-slate-300 font-racing text-xs font-bold uppercase tracking-wider">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL DIAGNÓSTICO DE REDE & PC (Fase 9: Item 99) ================= -->
+  <div id="modal-network-diag" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 hidden transition-all">
+    <div class="w-full max-w-md bg-gradient-to-b from-slate-900 to-black border border-brand-border rounded-2xl p-4 shadow-2xl space-y-3.5 max-h-[90vh] overflow-y-auto no-scrollbar">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">📊</span>
+          <div>
+            <h3 class="font-racing text-lg font-black text-white tracking-wide">DIAGNÓSTICO DO SISTEMA</h3>
+            <p class="text-[10px] text-slate-400">Latência, hardware do PC e telemetria</p>
+          </div>
+        </div>
+        <button onclick="closeDiagnosticsModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold">✕</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 font-mono text-xs">
+        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+          <span class="text-[9px] text-slate-500 uppercase block">IP LOCAL PC</span>
+          <span id="diag-pc-ip" class="font-bold text-brand-cyan text-sm">127.0.0.1</span>
+        </div>
+        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+          <span class="text-[9px] text-slate-500 uppercase block">LATÊNCIA (PING)</span>
+          <span id="diag-pc-ping" class="font-bold text-emerald-400 text-sm">-- ms</span>
+        </div>
+        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+          <span class="text-[9px] text-slate-500 uppercase block">USO DE CPU</span>
+          <span id="diag-pc-cpu" class="font-bold text-white text-sm">--%</span>
+        </div>
+        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800">
+          <span class="text-[9px] text-slate-500 uppercase block">MEMÓRIA RAM</span>
+          <span id="diag-pc-ram" class="font-bold text-white text-sm">--%</span>
+        </div>
+      </div>
+
+      <!-- Shared Memory & Keep-Awake status -->
+      <div class="space-y-1.5 text-xs font-mono">
+        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+          <span class="text-slate-400">Shared Memory AC:</span>
+          <span id="diag-shm-status" class="px-2 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold">ATIVA</span>
+        </div>
+        <div class="p-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+          <span class="text-slate-400">Modo Keep-Awake:</span>
+          <span class="px-2 py-0.2 rounded bg-amber-500/20 text-amber-400 font-bold">ATIVO (Kernel32)</span>
+        </div>
+      </div>
+
+      <button onclick="closeDiagnosticsModal()" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-racing text-xs font-bold uppercase tracking-wider">
+        Fechar Diagnóstico
+      </button>
     </div>
   </div>
 

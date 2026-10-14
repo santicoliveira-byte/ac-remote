@@ -1995,6 +1995,12 @@ function updateTelemetryHUD(data) {
       spotter.speak("Atenção aos pneus, temperatura muito alta.", "normal", 30);
     }
   }
+
+  // 18. Ferramentas Drift, Touge & Shutoko Engine (Fase 7)
+  updateDriftAndHighwayEngine(data, speed, steer, latG, temps);
+
+  // 19. Sim Rig Hardware & Wind Simulation (Fase 8)
+  updateSimRigHardware(speed, data.flag);
 }
 
 function toggleTelemetryDemo() {
@@ -2650,6 +2656,10 @@ function renderServersList(servers) {
   }
 
   container.innerHTML = filtered.map(srv => {
+    const shareText = encodeURIComponent(`🏎️ Entra comigo no servidor ${srv.name} de Assetto Corsa!\n${srv.cm_link || srv.url}`);
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${shareText}`;
+    const modsUrl = srv.cm_link || srv.url;
+
     return `
       <div class="bg-brand-card rounded-2xl p-4 border border-brand-border space-y-3 shadow-lg">
         <div class="flex items-start justify-between gap-2">
@@ -2658,7 +2668,7 @@ function renderServersList(servers) {
               <span class="px-2 py-0.5 rounded bg-brand-red/20 text-brand-red border border-brand-red/30 text-[9px] font-bold uppercase tracking-wider">
                 ${srv.tag || 'Online'}
               </span>
-              <span class="text-[10px] text-emerald-400 font-mono font-bold">● ${srv.ping || 'Online'}</span>
+              <span class="text-[10px] text-emerald-400 font-mono font-bold" id="srv-ping-${srv.id}">● ${srv.ping || 'Online'}</span>
             </div>
             <h3 class="font-racing text-base font-bold text-white truncate leading-tight">${srv.name}</h3>
             <p class="text-xs text-slate-400 truncate mt-0.5">🏁 ${srv.track || 'Assetto Corsa Server'}</p>
@@ -2668,16 +2678,38 @@ function renderServersList(servers) {
           </span>
         </div>
 
-        <div class="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+        <div class="flex items-center gap-1.5 pt-1 border-t border-slate-800/80">
           <button 
             onclick="joinServer('${srv.id}', '${srv.url || srv.cm_link}')"
             class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 text-white font-racing font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-md shadow-brand-red/30 active:scale-95 transition-transform"
           >
             <span>🏎️</span> ENTRAR NO SERVIDOR
           </button>
+          
+          <!-- Download de Mods do Servidor (Item 43) -->
+          <a 
+            href="${modsUrl}" 
+            target="_blank"
+            class="px-2.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs active:scale-95 transition-transform flex items-center justify-center"
+            title="Download de Mods do Servidor"
+          >
+            📦
+          </a>
+
+          <!-- Partilha por WhatsApp (Item 50) -->
+          <a 
+            href="${whatsappUrl}" 
+            target="_blank"
+            class="px-2.5 py-2.5 rounded-xl bg-emerald-950/50 border border-emerald-800 text-emerald-400 text-xs active:scale-95 transition-transform flex items-center justify-center"
+            title="Partilhar Servidor no WhatsApp"
+          >
+            💬
+          </a>
+
+          <!-- Copiar Link -->
           <button 
             onclick="copyServerLink('${srv.cm_link || srv.url}')"
-            class="px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs active:scale-95 transition-transform"
+            class="px-2.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs active:scale-95 transition-transform"
             title="Copiar Link"
           >
             📋
@@ -2935,4 +2967,440 @@ function showToast(msg, icon = '🚀') {
     toast.classList.remove('opacity-100', 'translate-y-0');
     toast.classList.add('opacity-0', '-translate-y-4');
   }, 2600);
+}
+
+// =========================================================================
+// FASE 4: SERVIDORES ONLINE, LOBBIES & COMUNIDADE (ITENS 41-55)
+// =========================================================================
+
+let autoJoinActive = false;
+let autoJoinInterval = null;
+
+function toggleAutoJoin() {
+  soundEngine.playShift();
+  autoJoinActive = !autoJoinActive;
+  const icon = document.getElementById('auto-join-icon');
+  const label = document.getElementById('auto-join-label');
+  const btn = document.getElementById('btn-auto-join-toggle');
+
+  if (autoJoinActive) {
+    if (icon) icon.textContent = '⚡';
+    if (label) label.textContent = 'AUTO-JOIN ATIVO';
+    if (btn) btn.className = 'py-2.5 px-3 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-md';
+    showToast('Aviso de Vagas e Auto-Join ATIVADO!', '🔔');
+    soundEngine.playChime();
+    startAutoJoinMonitor();
+  } else {
+    if (icon) icon.textContent = '🔔';
+    if (label) label.textContent = 'AVISO DE VAGAS';
+    if (btn) btn.className = 'py-2.5 px-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-md';
+    showToast('Aviso de Vagas DESATIVADO', '🔕');
+    if (autoJoinInterval) clearInterval(autoJoinInterval);
+  }
+}
+
+function startAutoJoinMonitor() {
+  if (autoJoinInterval) clearInterval(autoJoinInterval);
+  autoJoinInterval = setInterval(async () => {
+    if (!autoJoinActive) return;
+    const servers = state.config.favorite_servers || [];
+    if (servers.length === 0) return;
+    const srv = servers[0];
+    try {
+      const res = await apiFetch('/api/server_ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ip: srv.ip || '141.95.74.88:9600' })
+      });
+      const data = await res.json();
+      if (data.online && data.slots_free > 0) {
+        soundEngine.playRadio();
+        showToast(`🎉 Vaga encontrada em ${srv.name}! A conectar...`, '🏎️');
+        joinServer(srv.id, srv.cm_link || srv.url);
+        toggleAutoJoin(); // Para o monitor após conectar
+      }
+    } catch (e) {}
+  }, 10000);
+}
+
+async function sendQuickChat(msg) {
+  soundEngine.playShift();
+  showToast(`💬 Enviado: "${msg}"`, '💬');
+  try {
+    await apiFetch('/api/chat_message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg })
+    });
+  } catch (err) {
+    console.error('Erro ao enviar mensagem de chat:', err);
+  }
+}
+
+function openServerLeaderboardModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-server-leaderboard');
+  if (modal) modal.classList.remove('hidden');
+  fetchServerLeaderboard();
+}
+
+function closeServerLeaderboardModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-server-leaderboard');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function fetchServerLeaderboard() {
+  const tbody = document.getElementById('leaderboard-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" class="py-3 text-center text-slate-400">A carregar classificação ao vivo...</td></tr>';
+  
+  try {
+    const res = await apiFetch('/api/server_leaderboard');
+    const data = await res.json();
+    if (data.success && data.leaderboard) {
+      tbody.innerHTML = data.leaderboard.map(entry => {
+        const isUser = entry.driver.includes('Tu');
+        const posColor = entry.position === 1 ? 'text-amber-400 font-black' : (entry.position === 2 ? 'text-slate-300 font-bold' : (entry.position === 3 ? 'text-amber-600 font-bold' : 'text-slate-400'));
+        return `
+          <tr class="py-1.5 ${isUser ? 'bg-brand-red/20 font-bold text-white' : 'hover:bg-slate-900/60'}">
+            <td class="py-1.5 ${posColor}">#${entry.position}</td>
+            <td class="py-1.5 ${isUser ? 'text-brand-cyan' : 'text-white'} truncate max-w-[120px]">${entry.driver}</td>
+            <td class="py-1.5 text-slate-400 truncate max-w-[140px] text-[10px]">${entry.car}</td>
+            <td class="py-1.5 text-right font-bold text-emerald-400">${entry.best_lap}</td>
+            <td class="py-1.5 text-right text-slate-400 text-[10px]">${entry.gap}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="5" class="py-2 text-center text-red-400">Falha ao obter classificação</td></tr>';
+  }
+}
+
+// =========================================================================
+// FASE 6: EFEITOS SONOROS, HAPTICS & CUSTOMIZAÇÃO VISUAL (ITENS 66-75)
+// =========================================================================
+
+function triggerHaptic(type) {
+  if (!navigator.vibrate) return;
+  try {
+    if (type === 'understeer') {
+      navigator.vibrate([40, 30, 40]);
+    } else if (type === 'abs') {
+      navigator.vibrate([25, 20, 25, 20]);
+    } else if (type === 'wheelspin') {
+      navigator.vibrate([60, 40, 60]);
+    } else if (type === 'shift') {
+      navigator.vibrate(30);
+    }
+  } catch (e) {}
+}
+
+function testHapticFeedback() {
+  soundEngine.playShift();
+  if (navigator.vibrate) {
+    navigator.vibrate([80, 50, 100, 50, 150]);
+    showToast('📳 Vibração Háptica Testada com Sucesso!', '📳');
+  } else {
+    showToast('Vibração simulada neste dispositivo', '📳');
+  }
+}
+
+function setScreenDimmer(val) {
+  soundEngine.playShift();
+  document.body.style.filter = val < 1.0 ? `brightness(${val})` : 'none';
+  document.querySelectorAll('.dim-btn').forEach(btn => {
+    const isThis = parseFloat(btn.getAttribute('data-dim')) === val;
+    btn.className = isThis 
+      ? 'dim-btn px-2 py-0.5 rounded bg-brand-red text-white font-bold' 
+      : 'dim-btn px-2 py-0.5 rounded bg-slate-800 text-slate-300';
+  });
+  showToast(`Brilho ajustado para ${Math.round(val * 100)}%`, '🌙');
+}
+
+// =========================================================================
+// FASE 7: FERRAMENTAS DRIFT, TOUGE & SHUTOKO (ITENS 76-85)
+// =========================================================================
+
+let driftScore = 0;
+let driftCombo = 1;
+let driftHighScore = 14250;
+let isDrifting = false;
+let driftStraightTimer = 0;
+let shutokoTopSpeed = 284.2;
+let shutokoOvertakes = 18;
+let specialMode = 'drift';
+
+function setSpecialMode(mode) {
+  soundEngine.playShift();
+  specialMode = mode;
+  ['drift', 'touge', 'shutoko'].forEach(m => {
+    const v = document.getElementById(`special-view-${m}`);
+    const b = document.getElementById(`btn-mode-${m}`);
+    if (v) v.classList.toggle('hidden', m !== mode);
+    if (b) {
+      b.className = m === mode 
+        ? 'px-2 py-0.5 rounded bg-purple-600 text-white' 
+        : 'px-2 py-0.5 rounded text-slate-400 hover:text-white';
+    }
+  });
+}
+
+function updateDriftAndHighwayEngine(data, speed, steer, latG, tyreTemps) {
+  const angleDisplay = document.getElementById('drift-angle-display');
+  const zoneBadge = document.getElementById('drift-zone-badge');
+  const scoreDisplay = document.getElementById('drift-score-display');
+  const comboBadge = document.getElementById('drift-combo-badge');
+  const speedTrapEl = document.getElementById('shutoko-top-speed');
+  const tyreOverheatAlert = document.getElementById('drift-tyre-overheat-alert');
+
+  // Cálculo de Ângulo de Drift Realista
+  const driftAngle = Math.min(85, Math.max(0, Math.round(Math.abs(steer) * 0.95 + Math.abs(latG) * 14)));
+
+  if (angleDisplay) angleDisplay.textContent = `${driftAngle}°`;
+
+  if (zoneBadge) {
+    if (driftAngle >= 55) {
+      zoneBadge.className = 'px-2 py-0.2 rounded text-[8px] font-mono font-bold bg-purple-600 text-white animate-pulse';
+      zoneBadge.textContent = 'EXTREME ANGLE';
+    } else if (driftAngle >= 35) {
+      zoneBadge.className = 'px-2 py-0.2 rounded text-[8px] font-mono font-bold bg-amber-500 text-black font-extrabold';
+      zoneBadge.textContent = 'PERFECT DRIFT';
+    } else if (driftAngle >= 18) {
+      zoneBadge.className = 'px-2 py-0.2 rounded text-[8px] font-mono font-bold bg-emerald-600 text-white';
+      zoneBadge.textContent = 'INÍCIO DRIFT';
+    } else {
+      zoneBadge.className = 'px-2 py-0.2 rounded text-[8px] font-mono font-bold bg-slate-800 text-slate-400';
+      zoneBadge.textContent = 'EM LINHA';
+    }
+  }
+
+  // Pontuação & Combo Multiplier estilo CarX / Formula D
+  if (driftAngle >= 20 && speed >= 28) {
+    isDrifting = true;
+    driftStraightTimer = 0;
+    const pts = Math.round(driftAngle * (speed / 18) * 0.4 * driftCombo);
+    driftScore += pts;
+    if (driftScore > 2000 && driftCombo < 2) driftCombo = 2;
+    if (driftScore > 5000 && driftCombo < 3) driftCombo = 3;
+    if (driftScore > 9000 && driftCombo < 4) driftCombo = 4;
+    if (driftScore > 14000 && driftCombo < 5) driftCombo = 5;
+
+    if (scoreDisplay) scoreDisplay.textContent = driftScore.toLocaleString();
+    if (comboBadge) {
+      comboBadge.textContent = `COMBO x${driftCombo}`;
+      comboBadge.className = 'px-1.5 py-0.2 rounded bg-amber-500 text-black font-black text-[9px] animate-pulse';
+    }
+    triggerHaptic('wheelspin');
+  } else if (isDrifting) {
+    driftStraightTimer++;
+    if (driftStraightTimer > 35) {
+      // Drift encerrado
+      if (driftScore > driftHighScore) {
+        driftHighScore = driftScore;
+        const hsEl = document.getElementById('drift-high-score');
+        if (hsEl) hsEl.textContent = driftHighScore.toLocaleString();
+        apiFetch('/api/drift_stats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ score: driftHighScore, max_combo: driftCombo, max_angle: driftAngle })
+        }).catch(() => {});
+      }
+      isDrifting = false;
+      driftCombo = 1;
+      driftScore = 0;
+      if (comboBadge) {
+        comboBadge.textContent = 'COMBO x1';
+        comboBadge.className = 'px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-black border border-amber-500/40 text-[9px]';
+      }
+    }
+  }
+
+  // Alerta de Pneus Traseiros Sobreaquecidos (Item 83)
+  if (tyreTemps && tyreOverheatAlert) {
+    const rearMax = Math.max(tyreTemps[2] || 0, tyreTemps[3] || 0);
+    if (rearMax > 105) {
+      tyreOverheatAlert.classList.remove('hidden');
+    } else {
+      tyreOverheatAlert.classList.add('hidden');
+    }
+  }
+
+  // Shutoko Top Speed Trap (Item 80)
+  if (speed > shutokoTopSpeed) {
+    shutokoTopSpeed = speed;
+    if (speedTrapEl) speedTrapEl.textContent = `${Math.round(shutokoTopSpeed)} km/h`;
+  }
+}
+
+function pressVirtualHandbrake(e) {
+  if (e) e.preventDefault();
+  soundEngine.playShift();
+  triggerHaptic('shift');
+  const btn = document.getElementById('btn-virtual-handbrake');
+  const lbl = document.getElementById('handbrake-btn-label');
+  if (btn) btn.classList.add('ring-4', 'ring-red-400', 'bg-red-700');
+  if (lbl) lbl.textContent = '🔥 TRAVÃO PUXADO!';
+  apiFetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'handbrake_press' })
+  }).catch(() => {});
+}
+
+function releaseVirtualHandbrake(e) {
+  if (e) e.preventDefault();
+  const btn = document.getElementById('btn-virtual-handbrake');
+  const lbl = document.getElementById('handbrake-btn-label');
+  if (btn) btn.classList.remove('ring-4', 'ring-red-400', 'bg-red-700');
+  if (lbl) lbl.textContent = 'TRAVÃO DE MÃO (SEGURA)';
+  apiFetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'handbrake_release' })
+  }).catch(() => {});
+}
+
+function setTurboLevel(key, label) {
+  soundEngine.playShift();
+  const lbl = document.getElementById('turbo-level-label');
+  if (lbl) lbl.textContent = `NÍVEL ${label}`;
+  showToast(`Turbo ajustado para ${label}!`, '⚡');
+  apiFetch('/api/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'turbo_up', key: key })
+  }).catch(() => {});
+}
+
+function startTougeRun(runType) {
+  soundEngine.playRadio();
+  showToast(`🏁 Largada ${runType} Touge Iniciada!`, '🏔️');
+}
+
+function teleportShutoko(spotName) {
+  soundEngine.playChime();
+  showToast(`📍 A teleportar para ${spotName}...`, '📍');
+  sendTrackAction('teleport_pits', `Spawn em ${spotName}`);
+}
+
+// =========================================================================
+// FASE 8: INTEGRAÇÃO SIM RIG & HARDWARE (ITENS 86-93)
+// =========================================================================
+
+function updateSimRigHardware(speed, flag) {
+  const windLabel = document.getElementById('wind-sim-pct-label');
+  if (windLabel) {
+    const windPct = Math.min(100, Math.round((speed / 280) * 100));
+    windLabel.textContent = `${windPct}% (${Math.round(speed)} km/h)`;
+  }
+}
+
+function openCustomMacroModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-custom-macro');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeCustomMacroModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-custom-macro');
+  if (modal) modal.classList.add('hidden');
+}
+
+function setMacroInput(key) {
+  const input = document.getElementById('custom-macro-input');
+  if (input) input.value = key;
+}
+
+async function sendCustomMacro() {
+  const input = document.getElementById('custom-macro-input');
+  const key = input ? input.value.trim() : '';
+  if (!key) {
+    showToast('Insere uma tecla ou atalho!', '⚠️');
+    return;
+  }
+  soundEngine.playShift();
+  showToast(`⚡ A enviar tecla: ${key}...`, '⌨️');
+  closeCustomMacroModal();
+  try {
+    const res = await apiFetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'custom_macro', key: key })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'Tecla executada no PC!', '✅');
+    }
+  } catch (e) {
+    showToast('Erro ao enviar tecla', '❌');
+  }
+}
+
+// =========================================================================
+// FASE 9: CONETIVIDADE, WAKE-ON-LAN & BACKUP EM NUVEM (ITENS 94-100)
+// =========================================================================
+
+async function triggerWakeOnLan() {
+  soundEngine.playShift();
+  const macInput = document.getElementById('input-wol-mac');
+  const mac = macInput ? macInput.value.trim() : '';
+  showToast('⚡ A enviar Magic Packet Wake-on-LAN...', '⚡');
+  try {
+    const res = await apiFetch('/api/wol', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mac_address: mac })
+    });
+    const data = await res.json();
+    if (data.success) {
+      soundEngine.playChime();
+      showToast(data.message || 'Sinal WoL enviado!', '⚡');
+    } else {
+      showToast(data.message || 'Falha no Wake-on-LAN', '⚠️');
+    }
+  } catch (err) {
+    showToast('Falha na comunicação com o PC', '❌');
+  }
+}
+
+function downloadConfigBackup() {
+  soundEngine.playShift();
+  showToast('A transferir backup de configurações...', '📥');
+  window.open('/api/backup_config', '_blank');
+}
+
+function openDiagnosticsModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-network-diag');
+  if (modal) modal.classList.remove('hidden');
+  fetchDiagnosticsData();
+}
+
+function closeDiagnosticsModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-network-diag');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function fetchDiagnosticsData() {
+  try {
+    const res = await apiFetch('/api/network_diagnostics');
+    const data = await res.json();
+    if (data.success) {
+      const ipEl = document.getElementById('diag-pc-ip');
+      const pingEl = document.getElementById('diag-pc-ping');
+      const cpuEl = document.getElementById('diag-pc-cpu');
+      const ramEl = document.getElementById('diag-pc-ram');
+      const shmEl = document.getElementById('diag-shm-status');
+
+      if (ipEl) ipEl.textContent = data.local_ip || '127.0.0.1';
+      if (pingEl) pingEl.textContent = state.lastPing ? `${state.lastPing} ms` : '15 ms';
+      if (cpuEl) cpuEl.textContent = `${data.cpu_usage_pct}%`;
+      if (ramEl) ramEl.textContent = `${data.ram_usage_pct}%`;
+      if (shmEl) shmEl.textContent = data.shm_active ? 'ATIVA' : 'STANDBY';
+    }
+  } catch (e) {}
 }

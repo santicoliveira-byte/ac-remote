@@ -148,6 +148,31 @@ if report_data and report_data.get("report"):
     rep = report_data["report"]
     print(f"   [OK] Relatório Gerado: Voltas {rep.get('completed_laps')}, Melhor Tempo: {rep.get('best_time')}")
 
+# 11. Teste de Servidores Online & Chat (Fase 4)
+print("\n--- 11. VERIFICAR SERVIDORES ONLINE & CHAT (FASE 4) ---")
+test_endpoint("Ping de Servidor (POST /api/server_ping)", "/api/server_ping", method="POST", payload={"ip": "141.95.74.88:9600"})
+test_endpoint("Chat de Pista (POST /api/chat_message)", "/api/chat_message", method="POST", payload={"message": "Good Race! 🏁"})
+test_endpoint("Leaderboard ao Vivo (GET /api/server_leaderboard)", "/api/server_leaderboard")
+
+# 12. Teste de Drift & Touge (Fase 7)
+print("\n--- 12. VERIFICAR FERRAMENTAS DRIFT & TOUGE (FASE 7) ---")
+test_endpoint("Estatísticas de Drift (GET /api/drift_stats)", "/api/drift_stats")
+test_endpoint("Gravar Pontos Drift (POST /api/drift_stats)", "/api/drift_stats", method="POST", payload={"score": 15000, "max_combo": 5, "max_angle": 68.2})
+test_endpoint("Splits Touge (GET /api/touge_splits)", "/api/touge_splits")
+
+# 13. Teste de Hardware & Sim Rig (Fase 8)
+print("\n--- 13. VERIFICAR SIM RIG & BUTTON BOX PRO (FASE 8) ---")
+test_endpoint("Status Sim Rig / Wind & RGB (GET /api/sim_rig/status)", "/api/sim_rig/status")
+actions_f8 = ["discord_mute", "media_play_pause", "media_next", "replay_clip", "handbrake_press", "handbrake_release", "turbo_up"]
+for act in actions_f8:
+    test_endpoint(f"Ação Pro: {act}", "/api/action", method="POST", payload={"action": act, "key": "1"})
+
+# 14. Teste de Conetividade & Cloud Sync (Fase 9)
+print("\n--- 14. VERIFICAR CONETIVIDADE & CLOUD SYNC (FASE 9) ---")
+test_endpoint("Wake-on-LAN (POST /api/wol)", "/api/wol", method="POST", payload={"mac_address": "00:11:22:33:44:55"})
+test_endpoint("Backup de Configurações (GET /api/backup_config)", "/api/backup_config")
+test_endpoint("Diagnóstico de Rede & PC (GET /api/network_diagnostics)", "/api/network_diagnostics")
+
 print("\n" + "="*60)
 print(f"   RESULTADO DOS TESTES: {passed} PASSOU | {failed} FALHOU")
 print("="*60)
