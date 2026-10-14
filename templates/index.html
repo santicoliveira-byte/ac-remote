@@ -319,14 +319,58 @@
           </button>
         </div>
 
-        <!-- Chips de Filtros de Categoria (Todos, Favoritos, GT3, Drift, etc.) -->
+        <!-- Barra de Ferramentas Pro da Garagem (Fase 3: Roleta, Comparador, Setup Notes) -->
+        <div class="mt-2 flex items-center justify-between gap-1.5 overflow-x-auto no-scrollbar">
+          <button 
+            onclick="triggerRandomRoulette()" 
+            class="flex-1 py-1.5 px-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-300 hover:text-white text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-md"
+            title="Sorteia um combo aleatório de carro e pista"
+          >
+            <span>🎰</span>
+            <span class="truncate">ROLETA COMBO</span>
+          </button>
+
+          <button 
+            onclick="openCarCompareModal()" 
+            class="flex-1 py-1.5 px-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+            title="Comparar dois carros lado a lado"
+          >
+            <span>⚖️</span>
+            <span class="truncate">COMPARAR</span>
+          </button>
+
+          <button 
+            onclick="openSetupNotesModal()" 
+            class="flex-1 py-1.5 px-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-[11px] font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+            title="Notas de Afinação e Setup"
+          >
+            <span>📝</span>
+            <span class="truncate">SETUP NOTES</span>
+          </button>
+        </div>
+
+        <!-- Chips de Filtros de Categoria & Drivetrain (Fase 3: Items 27, 28) -->
         <div id="category-chips" class="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           <button onclick="setCategoryFilter('ALL')" class="cat-chip-btn active flex-none px-2.5 py-1 rounded-lg text-[11px] font-bold border border-brand-red bg-brand-red text-white" data-cat="ALL">TODOS</button>
           <button onclick="setCategoryFilter('FAVORITES')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-bold border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:text-white" data-cat="FAVORITES">⭐ FAVORITOS (<span id="fav-count-badge">0</span>)</button>
-          <button onclick="setCategoryFilter('GT3')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-800 bg-slate-900 text-slate-400 hover:text-white" data-cat="GT3">🏁 GT3 / CORRIDA</button>
+          <button onclick="setCategoryFilter('GT3')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-800 bg-slate-900 text-slate-400 hover:text-white" data-cat="GT3">🏁 GT3</button>
           <button onclick="setCategoryFilter('DRIFT')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-800 bg-slate-900 text-slate-400 hover:text-white" data-cat="DRIFT">💨 DRIFT</button>
-          <button onclick="setCategoryFilter('JDM')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-800 bg-slate-900 text-slate-400 hover:text-white" data-cat="JDM">🗾 JDM / STREET</button>
+          <button onclick="setCategoryFilter('JDM')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-800 bg-slate-900 text-slate-400 hover:text-white" data-cat="JDM">🗾 JDM</button>
           <button onclick="setCategoryFilter('SUPER')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-800 bg-slate-900 text-slate-400 hover:text-white" data-cat="SUPER">⚡ SUPERCARS</button>
+          <button onclick="setCategoryFilter('RWD')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-800 bg-slate-900 text-slate-400 hover:text-white" data-cat="RWD">🔴 RWD (TRASEIRA)</button>
+          <button onclick="setCategoryFilter('AWD')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-800 bg-slate-900 text-slate-400 hover:text-white" data-cat="AWD">🟢 AWD (4X4)</button>
+          <button onclick="setCategoryFilter('MANUAL')" class="cat-chip-btn flex-none px-2.5 py-1 rounded-lg text-[11px] font-medium border border-slate-800 bg-slate-900 text-slate-400 hover:text-white" data-cat="MANUAL">🕹️ MANUAL H</button>
+        </div>
+
+        <!-- Histórico de Recentes (Fase 3: Item 32) -->
+        <div id="recent-combos-container" class="hidden mt-2 p-2 rounded-xl bg-black/60 border border-slate-800/80">
+          <div class="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase mb-1">
+            <span>🕒 ÚLTIMOS COMBOS JOGADOS</span>
+            <span class="text-[9px] text-brand-cyan">1 Toque para Lançar</span>
+          </div>
+          <div id="recent-combos-list" class="flex gap-2 overflow-x-auto no-scrollbar py-0.5">
+            <!-- Gerado dinamicamente via JS -->
+          </div>
         </div>
 
         <!-- Filtros rápidos de Marcas -->
@@ -1765,6 +1809,94 @@
 
     </div>
   </nav>
+
+  <!-- ================= MODAL COMPARADOR DE CARROS (Fase 3: Item 33) ================= -->
+  <div id="modal-car-compare" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 hidden transition-all">
+    <div class="w-full max-w-lg bg-gradient-to-b from-slate-900 to-black border border-brand-border rounded-2xl p-4 shadow-2xl space-y-3.5 max-h-[90vh] overflow-y-auto no-scrollbar">
+      
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">⚖️</span>
+          <div>
+            <h3 class="font-racing text-lg font-black text-white tracking-wide">COMPARADOR DE CARROS</h3>
+            <p class="text-[10px] text-slate-400">Compara potência, peso, relação peso/potência e velocidade</p>
+          </div>
+        </div>
+        <button onclick="closeCarCompareModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold">✕</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <label class="text-[9px] text-slate-400 font-bold uppercase block mb-1">Carro 1</label>
+          <select id="compare-select-1" onchange="renderCarComparison()" class="w-full py-1.5 px-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-medium text-xs">
+            <!-- Preenchido via JS -->
+          </select>
+        </div>
+
+        <div>
+          <label class="text-[9px] text-slate-400 font-bold uppercase block mb-1">Carro 2</label>
+          <select id="compare-select-2" onchange="renderCarComparison()" class="w-full py-1.5 px-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-medium text-xs">
+            <!-- Preenchido via JS -->
+          </select>
+        </div>
+      </div>
+
+      <!-- Tabela Gráfica Comparativa -->
+      <div id="compare-metrics-container" class="space-y-2 pt-1 font-mono text-xs">
+        <!-- Renderizado dinamicamente via JS com barras de vitória verde/vermelha -->
+      </div>
+
+      <button onclick="closeCarCompareModal()" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-racing text-xs font-bold uppercase tracking-wider">
+        Fechar Comparador
+      </button>
+
+    </div>
+  </div>
+
+  <!-- ================= MODAL DE NOTAS DE SETUP (Fase 3: Item 34) ================= -->
+  <div id="modal-setup-notes" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 hidden transition-all">
+    <div class="w-full max-w-md bg-gradient-to-b from-slate-900 to-black border border-brand-border rounded-2xl p-4 shadow-2xl space-y-3 max-h-[90vh] overflow-y-auto no-scrollbar">
+      
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">📝</span>
+          <div>
+            <h3 class="font-racing text-lg font-black text-white tracking-wide">NOTAS PESSOAIS DE SETUP</h3>
+            <p class="text-[10px] text-slate-400" id="setup-notes-subtitle">Anotações do piloto para o carro atual</p>
+          </div>
+        </div>
+        <button onclick="closeSetupNotesModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center text-sm font-bold">✕</button>
+      </div>
+
+      <div>
+        <label class="text-[9px] text-slate-400 font-bold uppercase block mb-1">Anotações do Carro & Pista</label>
+        <textarea 
+          id="setup-notes-textarea" 
+          rows="6" 
+          placeholder="Exemplo: Pressões 26.5 PSI à frente, asa traseira nível 4, barras de torção rígidas em Spa..." 
+          class="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:outline-none focus:border-brand-red resize-none"
+        ></textarea>
+      </div>
+
+      <!-- Quick Setup Chips -->
+      <div class="flex flex-wrap gap-1">
+        <button onclick="appendSetupTag('Pressão +0.5 PSI')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-mono">+0.5 PSI</button>
+        <button onclick="appendSetupTag('Asa Traseira +1')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-mono">+1 Asa</button>
+        <button onclick="appendSetupTag('Travão 58% Frente')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-mono">58% Travão</button>
+        <button onclick="appendSetupTag('Camber -2.8°')" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-mono">Camber -2.8°</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button onclick="saveSetupNotes()" class="py-2.5 rounded-xl bg-brand-red text-white font-racing text-xs font-black uppercase tracking-wider active:scale-95 transition-all">
+          💾 Guardar Notas
+        </button>
+        <button onclick="closeSetupNotesModal()" class="py-2.5 rounded-xl bg-slate-800 text-slate-300 font-racing text-xs font-bold uppercase tracking-wider">
+          Fechar
+        </button>
+      </div>
+
+    </div>
+  </div>
 
   <!-- Lógica da Aplicação -->
   <script src="/static/app.js"></script>

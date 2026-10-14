@@ -453,6 +453,7 @@ async function fetchCars() {
 
     renderBrandFilterChips();
     renderCarsGrid();
+    renderRecentCombos();
 
     if (state.cars.length > 0 && !state.selectedCar) {
       selectCar(state.cars[0], false);
@@ -601,6 +602,15 @@ function renderCarsGrid() {
     } else if (state.activeCategory === 'SUPER') {
       const isSuper = ['ferrari', 'porsche', 'lamborghini', 'mclaren'].some(m => (car.name + ' ' + car.brand + ' ' + car.id).toLowerCase().includes(m));
       if (!isSuper) return false;
+    } else if (state.activeCategory === 'RWD') {
+      const isRwd = !((car.name + ' ' + car.id).toLowerCase().includes('awd') || (car.name + ' ' + car.id).toLowerCase().includes('4wd') || (car.name + ' ' + car.id).toLowerCase().includes('fwd'));
+      if (!isRwd) return false;
+    } else if (state.activeCategory === 'AWD') {
+      const isAwd = (car.name + ' ' + car.id).toLowerCase().includes('awd') || (car.name + ' ' + car.id).toLowerCase().includes('4wd') || (car.name + ' ' + car.id).toLowerCase().includes('quattro') || (car.name + ' ' + car.id).toLowerCase().includes('gtr');
+      if (!isAwd) return false;
+    } else if (state.activeCategory === 'MANUAL') {
+      const isManual = !((car.name + ' ' + car.id).toLowerCase().includes('gt3') || (car.name + ' ' + car.id).toLowerCase().includes('gt4') || (car.name + ' ' + car.id).toLowerCase().includes('f1'));
+      if (!isManual) return false;
     }
 
     // 2. Marca
@@ -690,24 +700,44 @@ function renderCarsGrid() {
             </div>
           </div>
 
-          <!-- Badges de Especificações -->
-          <div class="flex items-center gap-2 mt-2 pt-2 border-t border-slate-800/80 text-[10px] font-mono">
-            <div class="flex items-center gap-1 text-amber-400 font-bold">
-              <span>🔥</span>
-              <span>${bhp}</span>
-            </div>
-            <span class="text-slate-600">•</span>
-            <div class="flex items-center gap-1 text-slate-300">
-              <span>⚖️</span>
-              <span>${weight}</span>
-            </div>
-            ${topSpeed && topSpeed !== 'N/D' ? `
-              <span class="text-slate-600">•</span>
-              <div class="flex items-center gap-1 text-brand-cyan">
-                <span>⚡</span>
-                <span>${topSpeed}</span>
+          <!-- Badges de Especificações & Ações Rápidas (Fase 3) -->
+          <div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/80 text-[10px] font-mono">
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1 text-amber-400 font-bold">
+                <span>🔥</span>
+                <span>${bhp}</span>
               </div>
-            ` : ''}
+              <span class="text-slate-600">•</span>
+              <div class="flex items-center gap-1 text-slate-300">
+                <span>⚖️</span>
+                <span>${weight}</span>
+              </div>
+              ${topSpeed && topSpeed !== 'N/D' ? `
+                <span class="text-slate-600">•</span>
+                <div class="flex items-center gap-1 text-brand-cyan">
+                  <span>⚡</span>
+                  <span>${topSpeed}</span>
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- Botões Rápidos: Comparar & Setup Notes -->
+            <div class="flex items-center gap-1">
+              <button 
+                onclick="event.stopPropagation(); openCarCompareModal('${car.id}');" 
+                class="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-[9px] text-slate-300 hover:text-white border border-slate-800 active:scale-90 transition-transform"
+                title="Comparar com outro carro"
+              >
+                ⚖️
+              </button>
+              <button 
+                onclick="event.stopPropagation(); openSetupNotesModal('${car.id}');" 
+                class="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-[9px] text-slate-300 hover:text-white border border-slate-800 active:scale-90 transition-transform"
+                title="Notas de setup"
+              >
+                📝
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1203,6 +1233,7 @@ async function launchRace() {
     const result = await res.json();
 
     if (result.success) {
+      recordRecentCombo(state.selectedCar, state.selectedTrack);
       showToast(result.message || 'Corrida lançada no PC com sucesso!', '🏎️');
       // Muda automaticamente para a aba "Cockpit HUD"
       setTimeout(() => {
@@ -2194,6 +2225,215 @@ async function exportSessionReport() {
   } catch (err) {
     showToast('Falha ao exportar relatório', '❌');
   }
+}
+
+// ================= FASE 3: GESTÃO DE GARAGEM PRO, ROLETA & COMPARADOR =================
+
+function triggerRandomRoulette() {
+  soundEngine.playShift();
+  hapticPulse('heavy');
+  if (!state.cars.length || !state.tracks.length) {
+    showToast('A carregar carros e pistas...', '⌛');
+    return;
+  }
+
+  showToast('🎰 A girar a roleta de carros e pistas...', '🎲');
+  let spins = 0;
+  const maxSpins = 10;
+  const interval = setInterval(() => {
+    spins++;
+    const randomCar = state.cars[Math.floor(Math.random() * state.cars.length)];
+    const randomTrack = state.tracks[Math.floor(Math.random() * state.tracks.length)];
+    soundEngine.playShift();
+
+    if (spins >= maxSpins) {
+      clearInterval(interval);
+      selectCar(randomCar, false);
+      selectTrack(randomTrack);
+      recordRecentCombo(randomCar, randomTrack);
+      soundEngine.playConfirm();
+      hapticPulse('heavy');
+      showToast(`🎯 Combo Sorteado: ${randomCar.name} @ ${randomTrack.name}!`, '🏁');
+      openLaunchSheet();
+    }
+  }, 110);
+}
+
+function recordRecentCombo(car, track) {
+  if (!car || !track) return;
+  let recents = [];
+  try {
+    recents = JSON.parse(localStorage.getItem('ac_recent_combos') || '[]');
+  } catch (e) {}
+
+  recents = recents.filter(r => !(r.carId === car.id && r.trackId === track.id));
+  recents.unshift({
+    carId: car.id,
+    carName: car.name,
+    trackId: track.id,
+    trackName: track.name,
+    timestamp: Date.now()
+  });
+  if (recents.length > 5) recents.pop();
+  localStorage.setItem('ac_recent_combos', JSON.stringify(recents));
+  renderRecentCombos();
+}
+
+function renderRecentCombos() {
+  const container = document.getElementById('recent-combos-container');
+  const list = document.getElementById('recent-combos-list');
+  if (!container || !list) return;
+
+  let recents = [];
+  try {
+    recents = JSON.parse(localStorage.getItem('ac_recent_combos') || '[]');
+  } catch (e) {}
+
+  if (recents.length === 0) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  container.classList.remove('hidden');
+  list.innerHTML = recents.map(r => `
+    <button 
+      onclick="launchRecentCombo('${r.carId}', '${r.trackId}')" 
+      class="flex-none p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-brand-red text-left max-w-[170px] active:scale-95 transition-all group shadow-md"
+    >
+      <span class="text-[10px] font-bold text-white block truncate leading-tight group-hover:text-brand-red">${r.carName}</span>
+      <span class="text-[8px] text-slate-400 block truncate font-mono mt-0.5">🏁 ${r.trackName}</span>
+    </button>
+  `).join('');
+}
+
+function launchRecentCombo(carId, trackId) {
+  soundEngine.playShift();
+  const c = state.cars.find(x => x.id === carId);
+  const t = state.tracks.find(x => x.id === trackId);
+  if (c) selectCar(c, false);
+  if (t) selectTrack(t);
+  openLaunchSheet();
+  showToast(`Combo selecionado: ${c?.name || ''} @ ${t?.name || ''}`, '🚀');
+}
+
+function openCarCompareModal(preselectedCarId = null) {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-car-compare');
+  const s1 = document.getElementById('compare-select-1');
+  const s2 = document.getElementById('compare-select-2');
+  if (!modal || !s1 || !s2 || !state.cars.length) return;
+
+  const carOptions = state.cars.map(c => `<option value="${c.id}">${c.name} (${c.brand || 'AC'})</option>`).join('');
+  s1.innerHTML = carOptions;
+  s2.innerHTML = carOptions;
+
+  const c1Id = preselectedCarId || (state.selectedCar ? state.selectedCar.id : state.cars[0].id);
+  const c2Id = state.cars.find(c => c.id !== c1Id)?.id || state.cars[0].id;
+  s1.value = c1Id;
+  s2.value = c2Id;
+
+  renderCarComparison();
+  modal.classList.remove('hidden');
+}
+
+function closeCarCompareModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-car-compare');
+  if (modal) modal.classList.add('hidden');
+}
+
+function parseCarMetric(valStr) {
+  if (!valStr) return 0;
+  const num = parseFloat(valStr.toString().replace(/[^0-9.]/g, ''));
+  return isNaN(num) ? 0 : num;
+}
+
+function renderCarComparison() {
+  const s1 = document.getElementById('compare-select-1');
+  const s2 = document.getElementById('compare-select-2');
+  const container = document.getElementById('compare-metrics-container');
+  if (!s1 || !s2 || !container) return;
+
+  const car1 = state.cars.find(c => c.id === s1.value) || state.cars[0];
+  const car2 = state.cars.find(c => c.id === s2.value) || state.cars[1] || state.cars[0];
+
+  const bhp1 = parseCarMetric(car1.specs?.bhp);
+  const bhp2 = parseCarMetric(car2.specs?.bhp);
+  const weight1 = parseCarMetric(car1.specs?.weight);
+  const weight2 = parseCarMetric(car2.specs?.weight);
+  const speed1 = parseCarMetric(car1.specs?.topSpeed);
+  const speed2 = parseCarMetric(car2.specs?.topSpeed);
+  const torque1 = parseCarMetric(car1.specs?.torque);
+  const torque2 = parseCarMetric(car2.specs?.torque);
+
+  const ratio1 = (bhp1 > 0 && weight1 > 0) ? (weight1 / bhp1).toFixed(2) : 0;
+  const ratio2 = (bhp2 > 0 && weight2 > 0) ? (weight2 / bhp2).toFixed(2) : 0;
+
+  const metrics = [
+    { label: 'POTÊNCIA', v1: `${bhp1 || car1.specs?.bhp || 'N/D'} CV`, v2: `${bhp2 || car2.specs?.bhp || 'N/D'} CV`, win: bhp1 > bhp2 ? 1 : (bhp2 > bhp1 ? 2 : 0) },
+    { label: 'BINÁRIO', v1: `${torque1 || car1.specs?.torque || 'N/D'} Nm`, v2: `${torque2 || car2.specs?.torque || 'N/D'} Nm`, win: torque1 > torque2 ? 1 : (torque2 > torque1 ? 2 : 0) },
+    { label: 'PESO', v1: `${weight1 || car1.specs?.weight || 'N/D'} kg`, v2: `${weight2 || car2.specs?.weight || 'N/D'} kg`, win: (weight1 > 0 && weight2 > 0) ? (weight1 < weight2 ? 1 : (weight2 < weight1 ? 2 : 0)) : 0 },
+    { label: 'RELAÇÃO PESO/POTÊNCIA', v1: `${ratio1 || 'N/D'} kg/cv`, v2: `${ratio2 || 'N/D'} kg/cv`, win: (ratio1 > 0 && ratio2 > 0) ? (ratio1 < ratio2 ? 1 : (ratio2 < ratio1 ? 2 : 0)) : 0 },
+    { label: 'VELOCIDADE MÁXIMA', v1: `${speed1 || car1.specs?.topSpeed || 'N/D'} km/h`, v2: `${speed2 || car2.specs?.topSpeed || 'N/D'} km/h`, win: speed1 > speed2 ? 1 : (speed2 > speed1 ? 2 : 0) }
+  ];
+
+  container.innerHTML = metrics.map(m => `
+    <div class="p-2 rounded-xl bg-slate-950/80 border border-slate-800/80">
+      <div class="text-[9px] font-bold text-slate-400 text-center uppercase tracking-wider mb-1">${m.label}</div>
+      <div class="grid grid-cols-2 gap-2 text-center">
+        <div class="p-1.5 rounded-lg ${m.win === 1 ? 'bg-emerald-950/60 border border-emerald-600 text-emerald-300 font-bold' : 'bg-slate-900 border border-slate-800 text-slate-300'}">
+          <span class="text-xs">${m.v1}</span>
+          ${m.win === 1 ? '<span class="text-[8px] block text-emerald-400 font-bold">★ VENCE</span>' : ''}
+        </div>
+        <div class="p-1.5 rounded-lg ${m.win === 2 ? 'bg-emerald-950/60 border border-emerald-600 text-emerald-300 font-bold' : 'bg-slate-900 border border-slate-800 text-slate-300'}">
+          <span class="text-xs">${m.v2}</span>
+          ${m.win === 2 ? '<span class="text-[8px] block text-emerald-400 font-bold">★ VENCE</span>' : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+let currentSetupCarId = null;
+
+function openSetupNotesModal(carId = null) {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-setup-notes');
+  const txt = document.getElementById('setup-notes-textarea');
+  const sub = document.getElementById('setup-notes-subtitle');
+  if (!modal || !txt) return;
+
+  currentSetupCarId = carId || (state.selectedCar ? state.selectedCar.id : 'default');
+  const carName = state.cars.find(c => c.id === currentSetupCarId)?.name || 'Assetto Corsa';
+  if (sub) sub.textContent = `Anotações de afinação para ${carName}`;
+
+  const savedNotes = localStorage.getItem(`ac_setup_${currentSetupCarId}`) || '';
+  txt.value = savedNotes;
+  modal.classList.remove('hidden');
+}
+
+function closeSetupNotesModal() {
+  soundEngine.playShift();
+  const modal = document.getElementById('modal-setup-notes');
+  if (modal) modal.classList.add('hidden');
+}
+
+function appendSetupTag(tag) {
+  soundEngine.playShift();
+  const txt = document.getElementById('setup-notes-textarea');
+  if (!txt) return;
+  txt.value = txt.value ? `${txt.value}\n• ${tag}` : `• ${tag}`;
+}
+
+function saveSetupNotes() {
+  soundEngine.playConfirm();
+  hapticPulse('medium');
+  const txt = document.getElementById('setup-notes-textarea');
+  if (!txt) return;
+  const val = txt.value.trim();
+  localStorage.setItem(`ac_setup_${currentSetupCarId || 'default'}`, val);
+  showToast('Notas de setup guardadas com sucesso!', '💾');
+  closeSetupNotesModal();
 }
 
 // ================= NAVEGAÇÃO DE ABAS =================
