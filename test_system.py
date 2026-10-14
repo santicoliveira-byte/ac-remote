@@ -127,9 +127,26 @@ launch_payload = {
     "start_game": False  # Apenas atualiza race.ini e valida
 }
 launch_data = test_endpoint("Lançamento /api/launch (dry run)", "/api/launch", method="POST", payload=launch_payload)
-if launch_data:
-    print(f"   [OK] Resposta Launch: {launch_data.get('message')}")
-    print(f"   [OK] race.ini Atualizado: {launch_data.get('success')}")
+# 10. Teste da Estratégia de Boxes & Relatório de Sessão (Fase 2)
+print("\n--- 10. VERIFICAR ESTRATÉGIA DE BOXES & RELATÓRIO (FASE 2) ---")
+pit_get = test_endpoint("Estratégia Boxes (GET /api/pit_strategy)", "/api/pit_strategy")
+if pit_get and pit_get.get("strategy"):
+    st = pit_get["strategy"]
+    print(f"   [OK] Composto Alvo: {st.get('tyre_compound')}, Combustível: {st.get('fuel_to_add')} L")
+
+pit_post = test_endpoint("Programar Boxes (POST /api/pit_strategy)", "/api/pit_strategy", method="POST", payload={
+    "fuel_to_add": 42.0,
+    "tyre_compound": "MEDIUM",
+    "repair_body": True,
+    "repair_suspension": False
+})
+if pit_post:
+    print(f"   [OK] Resposta Pit Strategy: {pit_post.get('message')}")
+
+report_data = test_endpoint("Relatório da Sessão (GET /api/session_report)", "/api/session_report")
+if report_data and report_data.get("report"):
+    rep = report_data["report"]
+    print(f"   [OK] Relatório Gerado: Voltas {rep.get('completed_laps')}, Melhor Tempo: {rep.get('best_time')}")
 
 print("\n" + "="*60)
 print(f"   RESULTADO DOS TESTES: {passed} PASSOU | {failed} FALHOU")

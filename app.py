@@ -1710,6 +1710,50 @@ def get_ping():
         "game_running": is_game_running()
     })
 
+# ----------------- FASE 2: PIT STOP STRATEGY & RELATÓRIO -----------------
+current_pit_strategy = {
+    "fuel_to_add": 35.0,
+    "tyre_compound": "SOFT",
+    "tyre_pressures": [28.0, 28.0, 28.0, 28.0],
+    "repair_body": False,
+    "repair_suspension": False,
+    "pit_window_open": 12,
+    "pit_window_close": 22
+}
+
+@app.route('/api/pit_strategy', methods=['GET', 'POST'])
+def handle_pit_strategy():
+    global current_pit_strategy
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        current_pit_strategy.update(data)
+        return jsonify({
+            "success": True,
+            "message": "Estratégia de paragem nas boxes programada com sucesso!",
+            "strategy": current_pit_strategy
+        })
+    return jsonify({
+        "success": True,
+        "strategy": current_pit_strategy
+    })
+
+@app.route('/api/session_report', methods=['GET'])
+def get_session_report():
+    telemetry = read_ac_telemetry() or {}
+    report = {
+        "timestamp": time.time(),
+        "game_running": is_game_running(),
+        "completed_laps": telemetry.get("completed_laps", 0),
+        "best_time": telemetry.get("best_time", "--:--:---"),
+        "last_time": telemetry.get("last_time", "--:--:---"),
+        "fuel_remaining": telemetry.get("fuel", 0.0),
+        "tyre_wear": telemetry.get("tyre_wear", [100.0, 100.0, 100.0, 100.0]),
+        "tyre_temps": telemetry.get("tyre_temps", [24.0, 24.0, 24.0, 24.0]),
+        "brake_temps": telemetry.get("brake_temps", [150.0, 150.0, 120.0, 120.0]),
+        "pit_strategy": current_pit_strategy
+    }
+    return jsonify({"success": True, "report": report})
+
 
 # ----------------- INICIALIZAÇÃO -----------------
 

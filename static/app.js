@@ -1868,6 +1868,11 @@ function updateTelemetryHUD(data) {
   if (hudGaugeMode === 'analog') {
     drawAnalogGauge(rpm, maxRpm, speed, curGear);
   }
+
+  // 16. Verificação do Pit Limiter e Cronómetro (Fase 2)
+  const isInPit = data.status === 'PIT' || (data.gear === 'N' && speed < 5);
+  checkPitSpeedTrap(speed, isInPit);
+  handlePitStopwatch(speed, isInPit);
 }
 
 function toggleTelemetryDemo() {
@@ -1981,6 +1986,213 @@ async function sendTrackAction(action, hintMsg = '') {
   } catch (err) {
     console.error(`Erro ao enviar ação ${action}:`, err);
     showToast('Falha na comunicação com o PC', '❌');
+  }
+}
+
+// ================= FASE 2: ESTRATÉGIA DE BOXES, COMBUSTÍVEL & PNEUS =================
+
+let pitStrategy = {
+  compound: 'SOFT',
+  pressures: { fl: 28.0, fr: 28.0, rl: 28.0, rr: 28.0 },
+  repairBody: false,
+  repairSusp: false,
+  laps: 15,
+  margin: 2
+};
+
+let pitStopwatchRunning = false;
+let pitStopwatchStart = null;
+let pitStopwatchTimer = null;
+let lastPitStopDuration = null;
+
+function recalculatePitFuel() {
+  const lapsInput = document.getElementById('pit-calc-laps');
+  const marginInput = document.getElementById('pit-calc-margin');
+  const targetLabel = document.getElementById('calc-fuel-target-label');
+  const consLabel = document.getElementById('pit-calc-cons');
+  const arrivalLabel = document.getElementById('pit-calc-arrival');
+
+  const laps = parseInt(lapsInput ? lapsInput.value : 15) || 15;
+  const margin = parseFloat(marginInput ? marginInput.value : 2) || 2;
+  const avgCons = 2.3; // L/volta padrão
+
+  const totalFuelNeeded = (laps * avgCons + margin).toFixed(1);
+  if (targetLabel) targetLabel.textContent = `${totalFuelNeeded} L A COLOCAR`;
+  if (consLabel) consLabel.textContent = `${avgCons.toFixed(1)} L/v`;
+  if (arrivalLabel) arrivalLabel.textContent = `~${(margin + 1.2).toFixed(1)} L`;
+}
+
+function adjustPitCalcLaps(delta) {
+  soundEngine.playShift();
+  const input = document.getElementById('pit-calc-laps');
+  if (!input) return;
+  let val = Math.max(1, Math.min(100, (parseInt(input.value) || 15) + delta));
+  input.value = val;
+  recalculatePitFuel();
+}
+
+function adjustPitCalcMargin(delta) {
+  soundEngine.playShift();
+  const input = document.getElementById('pit-calc-margin');
+  if (!input) return;
+  let val = Math.max(0, Math.min(25, (parseFloat(input.value) || 2) + delta));
+  input.value = val;
+  recalculatePitFuel();
+}
+
+function selectPitTyreCompound(compound) {
+  soundEngine.playShift();
+  hapticPulse('medium');
+  pitStrategy.compound = compound;
+
+  const compounds = ['SOFT', 'MEDIUM', 'HARD', 'INTER', 'WET'];
+  const colors = {
+    SOFT: { text: '🔴 SOFT (MACIO)', border: 'border-red-500', bg: 'bg-red-950/40', textColor: 'text-red-300' },
+    MEDIUM: { text: '🟡 MEDIUM (MÉDIO)', border: 'border-yellow-500', bg: 'bg-yellow-950/40', textColor: 'text-yellow-300' },
+    HARD: { text: '⚪ HARD (DURO)', border: 'border-slate-300', bg: 'bg-slate-800/60', textColor: 'text-slate-200' },
+    INTER: { text: '🟢 INTER (MOLHADO)', border: 'border-emerald-500', bg: 'bg-emerald-950/40', textColor: 'text-emerald-300' },
+    WET: { text: '🔵 WET (CHUVA FORTE)', border: 'border-blue-500', bg: 'bg-blue-950/40', textColor: 'text-blue-300' }
+  };
+
+  compounds.forEach(c => {
+    const btn = document.getElementById(`btn-compound-${c}`);
+    if (!btn) return;
+    if (c === compound) {
+      btn.className = `p-1.5 rounded-lg border-2 ${colors[c].border} ${colors[c].bg} ${colors[c].textColor} text-[10px] font-black active:scale-95 transition-all shadow-lg`;
+    } else {
+      btn.className = 'p-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-400 text-[10px] font-bold active:scale-95 transition-all';
+    }
+  });
+
+  const badge = document.getElementById('selected-compound-badge');
+  if (badge && colors[compound]) {
+    badge.textContent = colors[compound].text;
+    badge.className = `font-bold ${colors[compound].textColor}`;
+  }
+}
+
+function adjustPitPressure(wheel, delta) {
+  soundEngine.playShift();
+  if (!pitStrategy.pressures[wheel]) pitStrategy.pressures[wheel] = 28.0;
+  pitStrategy.pressures[wheel] = Math.max(20.0, Math.min(38.0, pitStrategy.pressures[wheel] + delta));
+  const el = document.getElementById(`target-psi-${wheel}`);
+  if (el) el.textContent = `${pitStrategy.pressures[wheel].toFixed(1)} PSI`;
+}
+
+function updatePitRepairEstimate() {
+  soundEngine.playShift();
+  const bodyCb = document.getElementById('repair-body-checkbox');
+  const suspCb = document.getElementById('repair-susp-checkbox');
+  const estEl = document.getElementById('repair-time-estimate');
+
+  pitStrategy.repairBody = bodyCb ? bodyCb.checked : false;
+  pitStrategy.repairSusp = suspCb ? suspCb.checked : false;
+
+  let totalSecs = 6.0; // Base: troca de 4 pneus
+  if (pitStrategy.repairBody) totalSecs += 8.0;
+  if (pitStrategy.repairSusp) totalSecs += 14.0;
+
+  if (estEl) estEl.textContent = `TEMPO EST.: ~${totalSecs.toFixed(1)}s`;
+}
+
+function checkPitSpeedTrap(speed, isInPit) {
+  const trapAlert = document.getElementById('pit-speed-trap-alert');
+  if (!trapAlert) return;
+  if (isInPit && speed > 80.0) {
+    trapAlert.classList.remove('hidden');
+    hapticPulse('heavy');
+  } else {
+    trapAlert.classList.add('hidden');
+  }
+}
+
+function handlePitStopwatch(speed, isInPit) {
+  const display = document.getElementById('pit-stopwatch-display');
+  const statusLabel = document.getElementById('pit-status-label');
+  const lastStop = document.getElementById('pit-last-stop');
+
+  if (isInPit && speed < 1.0) {
+    // Parado nos boxes
+    if (!pitStopwatchRunning) {
+      pitStopwatchRunning = true;
+      pitStopwatchStart = Date.now();
+      if (statusLabel) {
+        statusLabel.textContent = '🛑 PARADO / BOXES';
+        statusLabel.className = 'text-red-400 font-bold animate-pulse';
+      }
+      if (pitStopwatchTimer) clearInterval(pitStopwatchTimer);
+      pitStopwatchTimer = setInterval(() => {
+        if (!pitStopwatchStart) return;
+        const elapsed = (Date.now() - pitStopwatchStart) / 1000;
+        const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+        const secs = (elapsed % 60).toFixed(2).padStart(5, '0');
+        if (display) display.textContent = `${mins}:${secs}`;
+      }, 50);
+    }
+  } else if (pitStopwatchRunning && speed > 5.0) {
+    // Carro arrancou dos boxes
+    pitStopwatchRunning = false;
+    if (pitStopwatchTimer) clearInterval(pitStopwatchTimer);
+    if (pitStopwatchStart) {
+      const finalDuration = ((Date.now() - pitStopwatchStart) / 1000).toFixed(1);
+      lastPitStopDuration = `${finalDuration}s`;
+      if (lastStop) lastStop.textContent = `${finalDuration}s`;
+    }
+    pitStopwatchStart = null;
+    if (statusLabel) {
+      statusLabel.textContent = 'EM PISTA';
+      statusLabel.className = 'text-emerald-400 font-bold';
+    }
+  }
+}
+
+async function sendPitStrategy() {
+  soundEngine.playConfirm();
+  hapticPulse('heavy');
+  showToast('A enviar estratégia de boxes para o PC...', '⛽');
+
+  try {
+    const res = await apiFetch('/api/pit_strategy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pitStrategy)
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Estratégia de boxes programada com sucesso!', '✅');
+    } else {
+      showToast(data.message || 'Erro ao enviar estratégia', '⚠️');
+    }
+  } catch (err) {
+    showToast('Estratégia gravada localmente na app!', '💾');
+  }
+}
+
+async function exportSessionReport() {
+  soundEngine.playConfirm();
+  hapticPulse('medium');
+  showToast('A gerar relatório completo da corrida...', '📊');
+
+  try {
+    const res = await apiFetch('/api/session_report');
+    const data = await res.json();
+    const reportData = data.report || {
+      timestamp: new Date().toISOString(),
+      pit_strategy: pitStrategy,
+      notes: "AC Remote PRO Telemetry & Pit Stop Session"
+    };
+
+    const jsonStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(reportData, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", jsonStr);
+    downloadAnchor.setAttribute("download", `AC_Remote_Relatorio_${Date.now()}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+
+    showToast('Relatório descarregado com sucesso!', '📥');
+  } catch (err) {
+    showToast('Falha ao exportar relatório', '❌');
   }
 }
 
