@@ -146,6 +146,80 @@ function updateSoundUI(enabled) {
   }
 }
 
+// ================= FASE 5: ENGENHEIRO DE PISTA & SPOTTER IA POR VOZ =================
+
+class SpotterEngine {
+  constructor() {
+    this.enabled = localStorage.getItem('ac_spotter_enabled') !== 'false';
+    this.synth = window.speechSynthesis;
+    this.voice = null;
+    this.lastSpoken = {};
+    this.initVoice();
+  }
+
+  initVoice() {
+    if (!this.synth) return;
+    const findVoice = () => {
+      const voices = this.synth.getVoices();
+      this.voice = voices.find(v => v.lang.startsWith('pt')) || voices.find(v => v.lang.startsWith('en')) || null;
+    };
+    findVoice();
+    if (this.synth.onvoiceschanged !== undefined) {
+      this.synth.onvoiceschanged = findVoice;
+    }
+  }
+
+  speak(text, priority = 'normal', minCooldownSecs = 8) {
+    if (!this.enabled || !this.synth) return;
+    const now = Date.now();
+    if (this.lastSpoken[text] && (now - this.lastSpoken[text]) < minCooldownSecs * 1000) {
+      return;
+    }
+    this.lastSpoken[text] = now;
+
+    if (priority === 'urgent') {
+      try { this.synth.cancel(); } catch (e) {}
+    }
+
+    try {
+      const utter = new SpeechSynthesisUtterance(text);
+      if (this.voice) utter.voice = this.voice;
+      utter.rate = 1.05;
+      utter.pitch = 0.95;
+      this.synth.speak(utter);
+    } catch (e) {}
+  }
+
+  toggle() {
+    this.enabled = !this.enabled;
+    localStorage.setItem('ac_spotter_enabled', this.enabled);
+    updateSpotterUI(this.enabled);
+    if (this.enabled) {
+      this.speak("Rádio do engenheiro ligado.", 'urgent', 0);
+    }
+    return this.enabled;
+  }
+}
+
+const spotter = new SpotterEngine();
+
+function toggleSpotter() {
+  soundEngine.playShift();
+  const stateVal = spotter.toggle();
+  showToast(stateVal ? '🎙️ Spotter IA Ativado' : '🔇 Spotter IA Desativado', '🎙️');
+}
+
+function updateSpotterUI(enabled) {
+  const btn = document.getElementById('btn-toggle-spotter');
+  const label = document.getElementById('spotter-label');
+  if (btn) {
+    btn.classList.toggle('border-brand-cyan', enabled);
+    btn.classList.toggle('bg-brand-cyan/20', enabled);
+    btn.classList.toggle('text-brand-cyan', enabled);
+  }
+  if (label) label.textContent = enabled ? '🎙️ Spotter ON' : '🎙️ Spotter OFF';
+}
+
 // ================= ESTADO GLOBAL DA APLICAÇÃO =================
 
 const state = {
@@ -1904,6 +1978,23 @@ function updateTelemetryHUD(data) {
   const isInPit = data.status === 'PIT' || (data.gear === 'N' && speed < 5);
   checkPitSpeedTrap(speed, isInPit);
   handlePitStopwatch(speed, isInPit);
+
+  // 17. Spotter IA / Engenheiro de Pista por Voz (Fase 5)
+  if (spotter.enabled && speed > 5) {
+    if (data.flag === 'YELLOW') {
+      spotter.speak("Atenção, bandeira amarela no setor. Reduz a velocidade.", "urgent", 15);
+    } else if (data.flag === 'BLUE') {
+      spotter.speak("Bandeira azul. Cede passagem ao carro mais rápido.", "urgent", 15);
+    } else if (data.flag === 'CHECKERED') {
+      spotter.speak("Bandeira de xadrez! Fim de sessão.", "urgent", 30);
+    } else if (fuel <= 5.0 && fuel > 0.0) {
+      spotter.speak("Combustível crítico! Entra nas boxes nesta volta.", "urgent", 35);
+    } else if (brakes && brakes.some(b => b > 550)) {
+      spotter.speak("Cuidado com a temperatura dos travões.", "normal", 30);
+    } else if (temps && temps.some(t => t > 105)) {
+      spotter.speak("Atenção aos pneus, temperatura muito alta.", "normal", 30);
+    }
+  }
 }
 
 function toggleTelemetryDemo() {
